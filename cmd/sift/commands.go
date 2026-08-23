@@ -110,8 +110,8 @@ var commands = []commandMeta{
 		name:    "issue",
 		group:   groupQuery,
 		brief:   "issue [问题] | issue list | issue new",
-		summary: "列 open issue / 只读问答；list/ls/new 为保留子命令，写动词被拒绝；提问建议整体加引号",
-		usage:   "sift issue [问题] | sift issue list|ls [--all] | sift issue new [--project ID]",
+		summary: "列 open issue / 只读问答；issue new 带起草说明进 pi 会话；list/ls/new 为保留子命令，写动词被拒绝；提问建议整体加引号",
+		usage:   "sift issue [问题] | sift issue list|ls [--all] | sift issue new [--project ID] [消息…]",
 		flags: []flagMeta{
 			{"--all", "", "不限当前目录项目，覆盖全部启用项目"},
 		},
@@ -120,6 +120,7 @@ var commands = []commandMeta{
 			"sift issue ls --all",
 			"sift issue \"这 20 个 issue 里哪些是相关的？\"",
 			"sift issue new",
+			"sift issue new \"支持暗色主题\"",
 		},
 	},
 	{
