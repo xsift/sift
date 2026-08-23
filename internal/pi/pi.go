@@ -33,6 +33,7 @@ const SkillName = "sift"
 type Runner interface {
 	LookPath(name string) (string, error)
 	Run(name string, args ...string) ([]byte, error)
+	RunInteractive(name string, args []string) error
 }
 
 // OSRunner executes through os/exec.
@@ -42,6 +43,13 @@ func (OSRunner) LookPath(name string) (string, error) { return exec.LookPath(nam
 func (OSRunner) Run(name string, args ...string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
 	return cmd.CombinedOutput()
+}
+func (OSRunner) RunInteractive(name string, args []string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // EnsureSkill installs the embedded Sift skill into the user's pi skills
@@ -84,15 +92,11 @@ func (PiMissingError) Error() string {
 // gather state via read-only commands. The pi executable is resolved from
 // PATH; a missing pi returns PiMissingError so the caller routes to the #960
 // install guidance.
-func RunSession(r Runner) error {
+func RunSession(r Runner, extraArgs ...string) error {
 	if _, err := r.LookPath("pi"); err != nil {
 		return PiMissingError{}
 	}
-	cmd := exec.Command("pi")
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return r.RunInteractive("pi", extraArgs)
 }
 
 // ContextSnapshot renders the context injected into the pi session: the

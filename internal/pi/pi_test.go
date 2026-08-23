@@ -24,6 +24,11 @@ func (f *fakeRunner) Run(name string, args ...string) ([]byte, error) {
 	return []byte("ok"), nil
 }
 
+func (f *fakeRunner) RunInteractive(name string, args []string) error {
+	f.runs = append(f.runs, append([]string{name}, args...))
+	return nil
+}
+
 func TestEnsureSkillIdempotent(t *testing.T) {
 	home := t.TempDir()
 	first, err := EnsureSkill(home)
@@ -64,6 +69,21 @@ func TestRunSessionMissingPi(t *testing.T) {
 	err := RunSession(r)
 	if _, ok := err.(PiMissingError); !ok {
 		t.Fatalf("RunSession with missing pi = %v, want PiMissingError", err)
+	}
+}
+
+func TestRunSessionForwardsArgs(t *testing.T) {
+	r := &fakeRunner{path: map[string]string{"pi": "/bin/pi"}}
+	if err := RunSession(r, "--append-system-prompt", "draft", "hello"); err != nil {
+		t.Fatalf("RunSession: %v", err)
+	}
+	if len(r.runs) != 1 {
+		t.Fatalf("interactive runs=%d, want 1", len(r.runs))
+	}
+	got := strings.Join(r.runs[0], " ")
+	want := "pi --append-system-prompt draft hello"
+	if got != want {
+		t.Fatalf("run = %q, want %q", got, want)
 	}
 }
 

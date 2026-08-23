@@ -105,16 +105,15 @@ var issueWriteVerbs = map[string]bool{
 	"close": true, "reopen": true, "edit": true, "comment": true, "label": true, "assign": true,
 }
 
-// runIssue dispatches `sift issue`: `new` enters the drafting session (only
-// as a bare `new` or followed by --flags, so an unquoted question starting
-// with the word "new" still takes the Q&A path); `list`/`ls` take the
-// deterministic listing under the same precise-match rule (gh/kubectl muscle
-// memory must not burn a pi call), with `--all` widening like the bare path;
-// a reserved write verb as the first word is refused outright; no arguments
-// take the deterministic fast path; everything else joined by spaces is the
-// question.
+// runIssue dispatches `sift issue`: `new` always enters the pi launcher
+// (specs/issue.md §3.1 — `sift issue new "想法"` is a first-word subcommand,
+// not a Q&A question); `list`/`ls` take the deterministic listing under the
+// same precise-match rule (gh/kubectl muscle memory must not burn a pi call),
+// with `--all` widening like the bare path; a reserved write verb as the
+// first word is refused outright; no arguments take the deterministic fast
+// path; everything else joined by spaces is the question.
 func runIssue(args []string, home config.Home, stdin io.Reader, stdout, stderr io.Writer) int {
-	if len(args) > 0 && args[0] == "new" && (len(args) == 1 || strings.HasPrefix(args[1], "-")) {
+	if len(args) > 0 && args[0] == "new" {
 		return runIssueNew(args[1:], home, stdin, stdout, stderr)
 	}
 	// --all opts out of the cwd-project scoping everywhere (issue feedback:

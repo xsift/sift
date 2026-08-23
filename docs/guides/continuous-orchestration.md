@@ -17,7 +17,7 @@ summary: 外部指挥 + Sift 执行模式：单人半自主持续推进项目
 
 | 层 | 角色 | 产出 | 工具 |
 |---|---|---|---|
-| **指挥层** | 人 + agent 会话（pi-agent skill / pi / Claude Code 等） | 拆解任务、建 Issue、打 `agent::*` 与 `plan:<id>` 标签 | `gh issue create` / `glab issue create` + `sift issue new`（v1 只读起草登记见 [Getting Started §7.7](getting-started.md#77-讨论式起草sift-issue-new)） |
+| **指挥层** | 人 + agent 会话（pi-agent skill / pi / Claude Code 等） | 拆解任务、建 Issue、打 `agent::*` 与 `plan:<id>` 标签 | `sift pi` / `sift issue new`（快捷引导进同一套会话，见 [Getting Started §7.7](getting-started.md#77-起草快捷入口sift-issue-new)）再在会话里 `gh`/`glab` |
 | **执行层** | Sift | 摄入 trigger label → Run → Agent → Gate → Change（PR/MR）→ 人工审批 | Sift daemon |
 | **汇合层** | Sift 的每日 digest 合批窗口 | 一次性把当天所有 interrupt 合批为一条；空闲项目发一条状态心跳 | Sift Channel digest（`daily_summary`） |
 
@@ -184,4 +184,4 @@ sift doctor                  # 在线 doctor 确认 daemon 可达、无新告警
 
 - 不要把 `sift` 包装成「自动决定下一步」的脚本；
 - 不要建 daemon 内的定时任务来扫描 Issue 自动建 Run；
-- 不要让 agent 直接调 `gh issue create` 未经你确认——`sift issue new`（Getting Started §7.7）是写路径的边界守住点。
+- 不要把「下一步做什么」交给 Sift 内核；建 Issue 在指挥会话里完成（`sift issue new` 只是进会话的快捷方式，见 [Getting Started §7.7](getting-started.md#77-起草快捷入口sift-issue-new)），创建前由你在会话里点头，不是 Sift 闸门。
