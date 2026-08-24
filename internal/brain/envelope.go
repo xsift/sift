@@ -41,9 +41,25 @@ type EnvelopeError struct {
 func (e *EnvelopeError) Error() string { return fmt.Sprintf("brain: %s: %v", e.Code, e.Err) }
 func (e *EnvelopeError) Unwrap() error { return e.Err }
 
+// ParseProtocolEnvelope dispatches on the configured outer protocol
+// (brain.md §4). It never guesses JSONL as claude-json-v1.
+func ParseProtocolEnvelope(protocol string, raw []byte) (resultText []byte, inputTokens, outputTokens int64, err error) {
+	switch protocol {
+	case "", string(ProtocolClaudeJSONV1):
+		return ParseEnvelope(raw)
+	case "pi-json-v1":
+		return parsePiJSONL(raw)
+	case "codex-json-v1":
+		return parseCodexJSONL(raw)
+	default:
+		return nil, 0, 0, &EnvelopeError{Code: storage.ProviderErrInvalidEnvelope, Err: fmt.Errorf("unknown protocol %q", protocol)}
+	}
+}
+
 // ParseEnvelope normalizes raw provider stdout into result_text + usage.
 // Usage absence/invalidity is a provider error: never guessed, never billed,
-// never treated as zero (brain.md §4.1).
+// never treated as zero (brain.md §4.1). Historical traces and claude-json-v1
+// stay on this entry point.
 func ParseEnvelope(raw []byte) (resultText []byte, inputTokens, outputTokens int64, err error) {
 	if !utf8.Valid(raw) {
 		return nil, 0, 0, &EnvelopeError{Code: storage.ProviderErrInvalidEnvelope, Err: errors.New("stdout is not valid UTF-8")}

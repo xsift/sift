@@ -300,9 +300,13 @@ func runSetup(args []string, stdin io.Reader, home config.Home, stdout, stderr i
 		report(stderr, err)
 		return 1
 	}
+	wroteBrain := ensureDefaultBrain(doc)
 	if err := writeSetupDocument(home, doc, existed); err != nil {
 		report(stderr, err)
 		return 1
+	}
+	if wroteBrain != "" {
+		fmt.Fprintf(stdout, "✓ Brain：pi（分诊默认；可改为 claude/codex）\n")
 	}
 	fmt.Fprintf(stdout, "%s 已写入 %s\n", render.Status("ok"), config.ConfigPath(home))
 	currentProject := registeredSetupProject(home, projectRepo)
@@ -368,6 +372,50 @@ func normalizeNumbers(v any) any {
 		}
 	}
 	return v
+}
+
+// ensureDefaultBrain writes brain.executable=pi when Brain is empty and pi
+// is resolvable (PATH or a registered agent). It never overwrites an
+// existing executable and never falls back to claude/codex.
+func ensureDefaultBrain(doc map[string]any) string {
+	if brainExecutable(doc) != "" {
+		return ""
+	}
+	if path, err := setupLookPath("pi"); err == nil && path != "" {
+		setBrainExecutable(doc, path)
+		return path
+	}
+	for _, item := range list(doc, "agents") {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		exe, _ := m["executable"].(string)
+		if filepath.Base(exe) != "pi" {
+			continue
+		}
+		setBrainExecutable(doc, exe)
+		return exe
+	}
+	return ""
+}
+
+func brainExecutable(doc map[string]any) string {
+	brain, _ := doc["brain"].(map[string]any)
+	if brain == nil {
+		return ""
+	}
+	exe, _ := brain["executable"].(string)
+	return strings.TrimSpace(exe)
+}
+
+func setBrainExecutable(doc map[string]any, exe string) {
+	brain, _ := doc["brain"].(map[string]any)
+	if brain == nil {
+		brain = map[string]any{}
+		doc["brain"] = brain
+	}
+	brain["executable"] = exe
 }
 
 func writeSetupDocument(home config.Home, doc map[string]any, backup bool) error {

@@ -2,6 +2,7 @@ package brain
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -78,6 +79,29 @@ func newShellAt(db *storage.DB, cfg config.Brain, p Provider, times ...int64) *S
 		mu++
 		return time.UnixMilli(t)
 	})
+}
+
+func TestShellPiJSONLProtocol(t *testing.T) {
+	db := openShellDB(t)
+	ctx := context.Background()
+	seedIntakeSubject(t, db, "p-pi")
+	inner := ValidT1ResultText()
+	quoted, err := json.Marshal(inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout := []byte(`{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":` + string(quoted) + `}]},"usage":{"input":10,"output":4}}` + "\n")
+	cfg := shellCfg(1000)
+	cfg.Protocol = config.BrainProtocolPiJSONv1
+	fake := &FakeProvider{Responses: []FakeResponse{{RawStdout: stdout}}}
+	shell := newShellAt(db, cfg, fake, shellTestBase+1, shellTestBase+2, shellTestBase+3, shellTestBase+4)
+	res, err := shell.Call(ctx, T1Contract(nil), t1CallParams(t, "p-pi"))
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if res.Status != storage.BrainCallValid {
+		t.Fatalf("result = %+v", res)
+	}
 }
 
 func TestShellValidFirstAttempt(t *testing.T) {

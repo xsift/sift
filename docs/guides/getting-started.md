@@ -58,7 +58,7 @@ claude --version       # 示例；换成 codex、cursor、pi 等实际命令
 
 **成功预期**：命令无需图形交互即可输出版本。只有 Cursor GUI 而没有 PATH 中的 `cursor` CLI，不满足后台启动条件。
 
-**失败恢复**：PATH 中没有任何 Agent 时，`sift init` 会优先引导安装 pi（开源、多模型、无厂商账号门槛）；其他商业 Agent 不在 PATH 时请自行安装并确认它在 daemon 可见的 PATH 中，也可以在 `sift init` 中输入绝对可执行路径。Agent 的账号、API Key、订阅和模型费用由你负责。Sift 配置中的 Brain token/API/attention 预算用于自身调度和 fail-closed，但不应当作供应商账单上限；首次测试请选小任务并同时检查供应商侧限额。
+**失败恢复**：PATH 中没有任何 Agent 时，`sift init` 会优先引导安装 pi（开源、多模型、无厂商账号门槛）；其他商业 Agent 不在 PATH 时请自行安装并确认它在 daemon 可见的 PATH 中，也可以在 `sift init` 中输入绝对可执行路径。Brain（分诊）默认也用 pi，可在 `config.yaml` 改为 `claude` 或 `codex`。Agent 的账号、API Key、订阅和模型费用由你负责。Sift 配置中的 Brain token/API/attention 预算用于自身调度和 fail-closed，但不应当作供应商账单上限；首次测试请选小任务并同时检查供应商侧限额。
 
 ## 1. 安装 Sift
 

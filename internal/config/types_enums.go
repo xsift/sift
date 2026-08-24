@@ -68,17 +68,22 @@ func (k ForgeKind) defaultCLI() string {
 	}
 }
 
-// BrainProtocol pins the Brain I/O protocol version (config.md §3.4). V0 admits
-// only claude-json-v1; a protocol change must introduce a new value.
+// BrainProtocol pins the Brain I/O protocol version (config.md §3.4).
 type BrainProtocol string
 
 const (
 	BrainProtocolClaudeJSONv1 BrainProtocol = "claude-json-v1"
+	BrainProtocolPiJSONv1     BrainProtocol = "pi-json-v1"
+	BrainProtocolCodexJSONv1  BrainProtocol = "codex-json-v1"
 )
 
 // EnumValues satisfies [schema.Enumerated].
 func (BrainProtocol) EnumValues() []string {
-	return []string{string(BrainProtocolClaudeJSONv1)}
+	return []string{
+		string(BrainProtocolClaudeJSONv1),
+		string(BrainProtocolPiJSONv1),
+		string(BrainProtocolCodexJSONv1),
+	}
 }
 
 // ReviewPolicy is the project gate review default (config.md §3.11).

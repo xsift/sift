@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"time"
 )
 
@@ -16,11 +17,19 @@ func normalizeBrain(raw *RawBrain, cfg *Config) error {
 		}
 	}
 	cfg.Brain.Executable = exe
+	provider, recognized := brainProviderForExecutable(exe)
 	if raw.Args != nil {
 		cfg.Brain.Args = append([]string(nil), raw.Args...)
+	} else if recognized {
+		cfg.Brain.Args = append([]string(nil), provider.args...)
 	}
 	if raw.Protocol != nil {
 		cfg.Brain.Protocol = *raw.Protocol
+	} else if exe != "" {
+		if !recognized {
+			return configError("brain.executable", "%q is not a supported Brain provider (pi/claude/codex); set brain.protocol", exe)
+		}
+		cfg.Brain.Protocol = provider.protocol
 	}
 	if raw.DailyTokenLimit != nil {
 		v := *raw.DailyTokenLimit
@@ -62,6 +71,28 @@ func normalizeBrain(raw *RawBrain, cfg *Config) error {
 		cfg.Brain.VersionArgs = append([]string(nil), raw.VersionArgs...)
 	}
 	return nil
+}
+
+// brainProviderForExecutable maps a Brain executable basename onto the
+// closed protocol + default argv table (config.md §3.4). The names match
+// the builtin agentfamily match lists; this package does not import
+// agentfamily.
+type brainProvider struct {
+	protocol BrainProtocol
+	args     []string
+}
+
+func brainProviderForExecutable(exe string) (brainProvider, bool) {
+	switch filepath.Base(exe) {
+	case "pi":
+		return brainProvider{BrainProtocolPiJSONv1, []string{"-p", "--mode", "json", "--no-tools"}}, true
+	case "claude":
+		return brainProvider{BrainProtocolClaudeJSONv1, []string{"-p", "--output-format", "json"}}, true
+	case "codex":
+		return brainProvider{BrainProtocolCodexJSONv1, []string{"exec", "--json", "-"}}, true
+	default:
+		return brainProvider{}, false
+	}
 }
 
 func normalizeScheduler(raw *RawScheduler, cfg *Config) error {

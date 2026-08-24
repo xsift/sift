@@ -290,7 +290,9 @@
         },
         "protocol": {
           "enum": [
-            "claude-json-v1"
+            "claude-json-v1",
+            "pi-json-v1",
+            "codex-json-v1"
           ],
           "type": [
             "string",

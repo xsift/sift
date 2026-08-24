@@ -73,7 +73,7 @@ internal/brain/prompts/T7/v1.schema.json
 
 - `prompt_version`（TEXT）：`<touchpoint>/v<integer>/<sha256前12位>`；hash 覆盖 prompt UTF-8 bytes、对应 output schema canonical JSON 与协议版本。改 prompt、schema 内容或 envelope decoder 任一项必须生成新值。
 - `output_schema_version`（INTEGER）：从 1 递增，仅 schema 结构语义变化时 bump。hash 字符串不得塞进该 integer 列。
-- `protocol_version`（TEXT）：provider envelope 协议标识，V0 为 `claude-json-v1`；协议语义变化必须引入新值，见 §4。
+- `protocol_version`（TEXT）：provider envelope 协议标识，V0 为 `claude-json-v1 | pi-json-v1 | codex-json-v1`；协议语义变化必须引入新值，见 §4。prompt hash 仍绑定 `claude-json-v1` 字符串，不因新增协议值而漂移。
 
 Prompt 固定分区：system contract → untrusted input delimiters → input canonical JSON → output schema。Issue/Context 中出现的指令一律标记为 untrusted data；prompt 不声称这能消除 injection。
 
@@ -107,7 +107,7 @@ prompt/input/schema 只存 call 一次，attempt 通过 FK 继承“同 prompt�
 
 ## 4. Provider 子进程协议
 
-V0 protocol 为 `claude-json-v1`，config 字段见 [`config.md` §3.4](config.md)（`protocol` V0 只能为该值）。
+V0 外层 protocol 为 `claude-json-v1 | pi-json-v1 | codex-json-v1`，config 字段见 [`config.md` §3.4](config.md) 与 [ADR-016](../decisions/016-brain-providers-pi-claude-codex.md)。未写 protocol 时按 executable 的 family 推断；禁止把一种信封猜成另一种。
 
 调用使用配置 executable + args，prompt/input 从 stdin 传入，不使用 shell，不把输入放 argv。子进程工作目录为空临时目录，环境只保留运行 CLI 所需的最小 allowlist；不得注入 operator/run/wrapper credential。timeout 使用 config `call_timeout`。
 
@@ -120,6 +120,14 @@ adapter 将 CLI 外层结果规范化为 `result_text` + `usage`：
 - JSON parser 拒绝重复键、非 UTF-8、非有限数字、尾随文本及非 object 顶层。未知字段只忽略，不进入 prompt、领域输出或 token 计算。
 - `result_text` 必须是仅含一个 JSON object 的 UTF-8 字符串，内层按触点 schema `additionalProperties:false` closed decode——open 只到外层为止。
 - 协议重大语义改变以新的 `protocol` 值适配，不靠 open-envelope 猜兼容。
+
+### 4.1a `pi-json-v1`
+
+stdout 为 JSONL。取最后一条 `type=message_end` 且 `message.role=assistant` 的文本块（`message.content[]` 中 `type=text` 的 `text` 拼接）作为 `result_text`。token 取最后一条带 `usage` 的事件，含顶层 `usage` 与 `message.usage`（后者覆盖前者）：`input`/`output`（若只有 `input_tokens`/`output_tokens` 则用那对）。无 assistant `message_end` 为 `invalid_envelope`；始终没有 usage 为 `usage_missing`。内层仍须是单个 JSON object。
+
+### 4.1b `codex-json-v1`
+
+stdout 为 JSONL。取最后一条 `type=item.completed` 且 `item.type=agent_message` 的 `item.text`（若无 `item.completed`，兼容 `type=item.agent_message` 的 `text`/`content`）作为 `result_text`。token 取最后一条 `type=turn.completed` 的 `usage.input_tokens`/`usage.output_tokens`。缺 assistant 文本为 `invalid_envelope`；缺 `turn.completed` usage 为 `usage_missing`。
 
 usage 缺失/非法使本 attempt 无法计费：记 `provider_error`（`usage_missing | usage_invalid`），不猜测、不收费、不当 0，触发重试/兜底。
 
