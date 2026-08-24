@@ -193,7 +193,7 @@ brain:
 |------|------|------|------|
 | `executable` | string/null | `null` | null 表示确定性模式，全部触点走各自兜底 |
 | `args` | `string[]` | `[]` | 直接 argv |
-| `protocol` | enum | `claude-json-v1` | V0 只能为 `claude-json-v1`；协议语义变化必须引入新值，见 [`brain.md` §4](brain.md) |
+| `protocol` | enum | 按 executable 推断 | `claude-json-v1 \| pi-json-v1 \| codex-json-v1`。省略时按 executable 的 agentfamily 匹配推断；认不出且未写则拒绝。见 [`brain.md` §4](brain.md) 与 [ADR-016](../decisions/016-brain-providers-pi-claude-codex.md) |
 | `daily_token_limit` | integer | `1000000` | `0` 表示禁止 LLM 调用；否则 `>=1000`。它是发起新物理 attempt 的消费阈值；已发起 attempt 按实际 usage 事后全额记账，允许单次越界，见 [`brain.md` §6](brain.md) |
 | `call_timeout` | duration | `2m` | `1s..30m` |
 | `schema_retries` | integer | `1` | V0 只能为 `1`：同 prompt 重试一次 |
@@ -201,7 +201,7 @@ brain:
 | `max_raw_output_bytes` | integer | `1048576` | `4096..16777216` |
 | `version_args` | `string[]` | `["--version"]` | 启动探测 argv；空数组只探测 executable 可执行 |
 
-`executable=null` 不属于启动错误。配置了 executable 时，进程级启动探测必须按 `version_args` 确认可执行；调用失败仍按触点兜底，不让 Run 静默丢失。
+`executable=null` 不属于启动错误。配置了 executable 时，进程级启动探测必须按 `version_args` 确认可执行；调用失败仍按触点兜底，不让 Run 静默丢失。未写 `args` 时按协议填默认 argv：claude `-p --output-format json`；pi `-p --mode json --no-tools`；codex `exec --json -`。`sift init` 在 Brain 为空且能解析到 pi 时默认写入 pi，不覆盖已有 `brain.executable`。
 
 ### 3.5 `scheduler`
 

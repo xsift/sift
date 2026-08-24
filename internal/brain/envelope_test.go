@@ -73,3 +73,138 @@ func TestParseEnvelopeNonUTF8(t *testing.T) {
 		t.Fatalf("code = %q", ee.Code)
 	}
 }
+
+func TestParseProtocolEnvelopeClaudeDelegates(t *testing.T) {
+	raw := `{"result_text":"{\"disposition\":\"ready\"}","usage":{"input_tokens":3,"output_tokens":2}}`
+	text, in, out, err := ParseProtocolEnvelope("claude-json-v1", []byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in != 3 || out != 2 || string(text) != `{"disposition":"ready"}` {
+		t.Fatalf("got %q %d/%d", text, in, out)
+	}
+}
+
+func TestParseProtocolEnvelopePiJSONL(t *testing.T) {
+	raw := "" +
+		`{"type":"message_start","message":{"role":"assistant"}}` + "\n" +
+		`{"type":"message_end","message":{"role":"user","content":[{"type":"text","text":"ignore"}]}}` + "\n" +
+		`{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"{\"disposition\":\"ready\"}"}]},"usage":{"input":11,"output":7}}` + "\n"
+	text, in, out, err := ParseProtocolEnvelope("pi-json-v1", []byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in != 11 || out != 7 {
+		t.Fatalf("usage = %d/%d", in, out)
+	}
+	if string(text) != `{"disposition":"ready"}` {
+		t.Fatalf("result_text = %q", text)
+	}
+}
+
+func TestParseProtocolEnvelopePiMessageUsageWins(t *testing.T) {
+	// Real pi 0.84 --mode json: streaming message_update often reports 0/0;
+	// the authoritative counters sit on message_end.message.usage.
+	raw := "" +
+		`{"type":"message_update","usage":{"input":0,"output":0}}` + "\n" +
+		`{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"{\"ok\":true}"}],"usage":{"input":42,"output":7,"cacheRead":1024}}}` + "\n"
+	text, in, out, err := ParseProtocolEnvelope("pi-json-v1", []byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in != 42 || out != 7 || string(text) != `{"ok":true}` {
+		t.Fatalf("got %q %d/%d", text, in, out)
+	}
+}
+
+func TestParseProtocolEnvelopePiUsageTokenNames(t *testing.T) {
+	raw := `{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"{}"}]},"usage":{"input_tokens":4,"output_tokens":5}}` + "\n"
+	_, in, out, err := ParseProtocolEnvelope("pi-json-v1", []byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in != 4 || out != 5 {
+		t.Fatalf("usage = %d/%d", in, out)
+	}
+}
+
+func TestParseProtocolEnvelopePiFailures(t *testing.T) {
+	cases := []struct {
+		name, raw, code string
+	}{
+		{name: "no_assistant", raw: `{"type":"message_end","message":{"role":"user","content":[{"type":"text","text":"{}"}]},"usage":{"input":1,"output":1}}` + "\n", code: storage.ProviderErrInvalidEnvelope},
+		{name: "usage_missing", raw: `{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"{}"}]}}` + "\n", code: storage.ProviderErrUsageMissing},
+		{name: "usage_negative", raw: `{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"{}"}]},"usage":{"input":-1,"output":1}}` + "\n", code: storage.ProviderErrUsageInvalid},
+		{name: "not_json_object", raw: `{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"[]"}]},"usage":{"input":1,"output":1}}` + "\n", code: storage.ProviderErrInvalidEnvelope},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, _, err := ParseProtocolEnvelope("pi-json-v1", []byte(tc.raw))
+			var ee *EnvelopeError
+			if !errors.As(err, &ee) || ee.Code != tc.code {
+				t.Fatalf("err = %v, want %s", err, tc.code)
+			}
+		})
+	}
+}
+
+func TestParseProtocolEnvelopeCodexJSONL(t *testing.T) {
+	raw := "" +
+		`{"type":"item.completed","item":{"type":"reasoning","text":"scratch"}}` + "\n" +
+		`{"type":"item.completed","item":{"type":"agent_message","text":"{\"disposition\":\"ready\"}"}}` + "\n" +
+		`{"type":"turn.completed","usage":{"input_tokens":9,"output_tokens":6}}` + "\n"
+	text, in, out, err := ParseProtocolEnvelope("codex-json-v1", []byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in != 9 || out != 6 || string(text) != `{"disposition":"ready"}` {
+		t.Fatalf("got %q %d/%d", text, in, out)
+	}
+}
+
+func TestParseProtocolEnvelopeCodexAgentMessageFallback(t *testing.T) {
+	raw := "" +
+		`{"type":"item.agent_message","text":"{}"}` + "\n" +
+		`{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}` + "\n"
+	text, in, out, err := ParseProtocolEnvelope("codex-json-v1", []byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(text) != "{}" || in != 1 || out != 1 {
+		t.Fatalf("got %q %d/%d", text, in, out)
+	}
+}
+
+func TestParseProtocolEnvelopeCodexFailures(t *testing.T) {
+	cases := []struct {
+		name, raw, code string
+	}{
+		{name: "no_agent_text", raw: `{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}` + "\n", code: storage.ProviderErrInvalidEnvelope},
+		{name: "usage_missing", raw: `{"type":"item.completed","item":{"type":"agent_message","text":"{}"}}` + "\n", code: storage.ProviderErrUsageMissing},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, _, err := ParseProtocolEnvelope("codex-json-v1", []byte(tc.raw))
+			var ee *EnvelopeError
+			if !errors.As(err, &ee) || ee.Code != tc.code {
+				t.Fatalf("err = %v, want %s", err, tc.code)
+			}
+		})
+	}
+}
+
+func TestParseProtocolEnvelopeUnknown(t *testing.T) {
+	_, _, _, err := ParseProtocolEnvelope("mystery-v1", []byte(`{"result_text":"{}","usage":{"input_tokens":1,"output_tokens":1}}`))
+	var ee *EnvelopeError
+	if !errors.As(err, &ee) || ee.Code != storage.ProviderErrInvalidEnvelope {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestParseProtocolEnvelopeDoesNotGuessClaudeFromJSONL(t *testing.T) {
+	raw := `{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"{}"}]},"usage":{"input":1,"output":1}}` + "\n"
+	_, _, _, err := ParseProtocolEnvelope("claude-json-v1", []byte(raw))
+	if err == nil {
+		t.Fatal("claude parser must not accept pi JSONL")
+	}
+}

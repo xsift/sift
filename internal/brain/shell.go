@@ -238,7 +238,7 @@ func (s *Shell) classify(tp TouchpointContract, raw ExecResult, callID string, a
 	n := int64(len(raw.Stdout))
 	attempt.RawOutputText, attempt.RawOutputDigest, attempt.RawOutputBytes = &text, &d, &n
 
-	resultText, inTok, outTok, err := ParseEnvelope(raw.Stdout)
+	resultText, inTok, outTok, err := s.parseStdout(raw.Stdout)
 	if err != nil {
 		if ee, ok := err.(*EnvelopeError); ok {
 			return providerErr(ee.Code)
@@ -321,7 +321,7 @@ func (s *Shell) RecoverRunning(ctx context.Context, contracts map[string]Touchpo
 			}
 		}
 		if validAttempt != nil && validAttempt.RawOutputText != nil {
-			resultText, _, _, err := ParseEnvelope([]byte(*validAttempt.RawOutputText))
+			resultText, _, _, err := s.parseStdout([]byte(*validAttempt.RawOutputText))
 			if err == nil {
 				if canonical, err := tp.ValidateOutput(resultText); err == nil {
 					if err := s.db.FinalizeBrainCall(ctx, storage.FinalizeBrainCallCmd{
@@ -349,6 +349,10 @@ func (s *Shell) RecoverRunning(ctx context.Context, contracts map[string]Touchpo
 		converged++
 	}
 	return converged, nil
+}
+
+func (s *Shell) parseStdout(raw []byte) ([]byte, int64, int64, error) {
+	return ParseProtocolEnvelope(string(s.cfg.Protocol), raw)
 }
 
 func failureSummary(a storage.BrainAttemptCmd) string {

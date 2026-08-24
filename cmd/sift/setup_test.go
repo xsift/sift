@@ -1150,6 +1150,78 @@ func TestInitPiBootstrapInstallsAndRegisters(t *testing.T) {
 	if got := snap.Config.Agents[0].Args; strings.Join(got, ",") != "-p" {
 		t.Fatalf("pi default args = %#v, want [-p]", got)
 	}
+	if snap.Config.Brain.Executable == "" || filepath.Base(snap.Config.Brain.Executable) != "pi" {
+		t.Fatalf("brain.executable = %q, want pi", snap.Config.Brain.Executable)
+	}
+	if snap.Config.Brain.Protocol != config.BrainProtocolPiJSONv1 {
+		t.Fatalf("brain.protocol = %q", snap.Config.Brain.Protocol)
+	}
+	if !strings.Contains(out.String(), "Brain：pi") {
+		t.Fatalf("brain announcement missing: %q", out.String())
+	}
+}
+
+func TestEnsureDefaultBrain(t *testing.T) {
+	t.Run("lookpath_pi", func(t *testing.T) {
+		prev := setupLookPath
+		setupLookPath = func(name string) (string, error) {
+			if name == "pi" {
+				return "/opt/homebrew/bin/pi", nil
+			}
+			return "", errors.New("not found")
+		}
+		t.Cleanup(func() { setupLookPath = prev })
+		doc := map[string]any{"version": 1}
+		if got := ensureDefaultBrain(doc); got != "/opt/homebrew/bin/pi" {
+			t.Fatalf("got %q", got)
+		}
+		brain, _ := doc["brain"].(map[string]any)
+		if brain["executable"] != "/opt/homebrew/bin/pi" {
+			t.Fatalf("brain = %#v", brain)
+		}
+	})
+	t.Run("existing_kept", func(t *testing.T) {
+		doc := map[string]any{"brain": map[string]any{"executable": "/usr/bin/claude"}}
+		if got := ensureDefaultBrain(doc); got != "" {
+			t.Fatalf("got %q", got)
+		}
+		if doc["brain"].(map[string]any)["executable"] != "/usr/bin/claude" {
+			t.Fatalf("overwrote %#v", doc["brain"])
+		}
+	})
+	t.Run("registered_agent", func(t *testing.T) {
+		prev := setupLookPath
+		setupLookPath = func(string) (string, error) { return "", errors.New("not found") }
+		t.Cleanup(func() { setupLookPath = prev })
+		doc := map[string]any{"agents": []any{map[string]any{"id": "pi", "executable": "pi"}}}
+		if got := ensureDefaultBrain(doc); got != "pi" {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("no_pi", func(t *testing.T) {
+		prev := setupLookPath
+		setupLookPath = func(string) (string, error) { return "", errors.New("not found") }
+		t.Cleanup(func() { setupLookPath = prev })
+		doc := map[string]any{"agents": []any{map[string]any{"id": "claude", "executable": "claude"}}}
+		if got := ensureDefaultBrain(doc); got != "" {
+			t.Fatalf("got %q", got)
+		}
+		if _, ok := doc["brain"]; ok {
+			t.Fatalf("unexpected brain %#v", doc["brain"])
+		}
+	})
+	t.Run("id_pi_custom_exe_ignored", func(t *testing.T) {
+		prev := setupLookPath
+		setupLookPath = func(string) (string, error) { return "", errors.New("not found") }
+		t.Cleanup(func() { setupLookPath = prev })
+		doc := map[string]any{"agents": []any{map[string]any{"id": "pi", "executable": "/opt/my-wrapper"}}}
+		if got := ensureDefaultBrain(doc); got != "" {
+			t.Fatalf("got %q", got)
+		}
+		if _, ok := doc["brain"]; ok {
+			t.Fatalf("unexpected brain %#v", doc["brain"])
+		}
+	})
 }
 
 // TestInitPiBootstrapDeclinedPrintsGuidance pins acceptance 3: declining the pi

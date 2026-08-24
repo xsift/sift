@@ -182,7 +182,7 @@ func (s *Shell) RecoverRunningT7(ctx context.Context) (int, error) {
 			}
 		}
 		if validAttempt != nil && validAttempt.RawOutputText != nil {
-			resultText, _, _, parseErr := ParseEnvelope([]byte(*validAttempt.RawOutputText))
+			resultText, _, _, parseErr := s.parseStdout([]byte(*validAttempt.RawOutputText))
 			if parseErr == nil {
 				if canonical, validateErr := contract.ValidateOutput(resultText); validateErr == nil {
 					if err := s.db.FinalizeBrainCall(ctx, storage.FinalizeBrainCallCmd{CallID: call.ID, Status: storage.BrainCallValid, SelectedAttemptNo: &validAttempt.ProviderAttempt, ValidatedOutputJSON: canonical, FinishedAtMS: s.now().UnixMilli()}); err != nil {

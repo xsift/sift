@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-04
-last_updated: 2026-08-19
+last_updated: 2026-08-24
 summary: Sift 总体计划执行情况。工作包分解见 WBS.md。
 ---
 
@@ -114,7 +114,8 @@ summary: Sift 总体计划执行情况。工作包分解见 WBS.md。
 ## Agent family 与中转 API（2026-08-18，#1024 / v0.6.9）
 
 - **已合入** #1026：`internal/agentfamily` 内置 claude/codex/cursor/opencode/pi；`sift init`/`agent add` 按 executable 匹配 family，并把 `auth.env`/`config.env` 快照到 `~/.sift/agent-secrets/<id>.env`（0600，不进 `config.yaml`）。派工时 `launchworker` 合并快照；Claude 的 `~/.claude/settings.json` `env` 覆盖同名快照，CC Switch 下次派工生效。规格见 [`specs/agentfamily.md`](specs/agentfamily.md)。#1024 已关。
-- **未做**：Codex `config.toml` 尚未解析（init 冻过 `OPENAI_*` 时 CC Switch 切不动）；`model`/`thinking` 无向导 prompt；#1023 Brain Codex 协议未动。
+- **未做**：Codex `config.toml` 尚未解析（init 冻过 `OPENAI_*` 时 CC Switch 切不动）；`model`/`thinking` 无向导 prompt。
+- **Brain 提供者（#1023 主路径）**：`brain.executable` 可为 pi/claude/codex；未写 `protocol`/`args` 时按 basename 推断。`sift init` 在 Brain 为空且能解析到 pi 时默认写入 pi。外层新增 `pi-json-v1`/`codex-json-v1`。Cursor 不是 Brain。仍不读 Codex `config.toml`。已存在的空 queued Run 不会在补上 Brain 后自动重做 T2。见 [ADR-016](decisions/016-brain-providers-pi-claude-codex.md)。
 
 ## 遗留 / 延期
 
@@ -122,7 +123,7 @@ summary: Sift 总体计划执行情况。工作包分解见 WBS.md。
 - **#883 性能 profile**:M7 真实负载绑定（应随 M7 并行 Run 片一并做，不再单独排期）
 - **#1024 Claude 中转 API**：主路径已随 #1026 / v0.6.9 合入并关 issue；Codex toml / 向导 model 仍开口
 - **#1022 Darwin 进程身份**：inspector 已随 #1027 / v0.6.9 合入；真机正式版 launch 不再因身份未知冻结仍待验证，issue 保持 Open
-- **#1023 Brain 支持 Codex 协议**：未做，Brain 仍仅 `claude-json-v1`
+- **#1023 Brain 支持 Codex 协议**：主路径已由 ADR-016 覆盖（pi/claude/codex 外层协议）；toml 解析仍开口，issue 待验证后关闭
 - **#963 `sift issue` 语义入口 v1（只读）**:依赖 #960/#961/#962 均已闭合，已解锁待启动
 - **#927 backlog**:安装器矩阵/fish 兼容及 macOS tmux/进程 flaky 持续观察；详见上节，不作为 M7 门禁替代
 - **wrapper handoff 精调**:`waiting_human` 上的 `kill`/`retry`/`approve` 操作验证
