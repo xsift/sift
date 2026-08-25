@@ -299,7 +299,7 @@ closed object（`additionalProperties:false`）：
 
 LLM 不输出 guardrails、max attempts、并发或 policy；出现额外字段即被 closed decode 拒绝。
 
-失败兜底：Run 保持/进入 `waiting_human`，agent/kind 为空，生成 `design_approval` 人工分派 Interrupt；不自动挑“第一个 Agent”。
+失败兜底：不自动挑“第一个 Agent”。目标是 Run 保持/进入 `waiting_human`，agent/kind 为空，生成 `design_approval` 人工分派 Interrupt（T2 HITL，写路径尚未接线）。当前实现不得把未赋值 Run 静默留在 `queued`：转为 `failed`，`failure_reason=contract_violation`。issue 槽仍占用，需 `sift rm` 后再触发。
 
 ### 8.3 审批消费事务
 

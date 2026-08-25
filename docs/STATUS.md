@@ -20,7 +20,7 @@ summary: Sift 总体计划执行情况。工作包分解见 WBS.md。
 | M5 Attention/Command/Report/Brain/指标 | ✅ 完成 | PASS WITH NOTES | Interrupt 全功能、Command、Report、Channel、九项指标 |
 | M6 tmux + 完整故障矩阵 | ✅ 完成 | PASS WITH NOTES | tmux 第二后端、PTY、V2/V4 双后端全矩阵、阶段门归档 |
 | **M7 真实 Agent + PoC 取证** | 🔬 **PoC 已验证** | — | **Pi Brain+Agent 双 forge 端到端跑通** |
-| **M8 发布** | 🔄 **自动化核心完成** | — | §8.1–8.4 合入 main(#907–#910)；**Release 已迭代至 v0.6.13**（schema 66 可启动）。A10 干净机 + live 跨版本升级 = 人工门禁，待 M7 通过后 |
+| **M8 发布** | 🔄 **自动化核心完成** | — | §8.1–8.4 合入 main(#907–#910)；**Release 已迭代至 v0.6.14**（T2 失败不再假排队）。A10 干净机 + live 跨版本升级 = 人工门禁，待 M7 通过后 |
 
 ## M7 PoC 验证成果(本轮)
 
@@ -116,6 +116,10 @@ summary: Sift 总体计划执行情况。工作包分解见 WBS.md。
 - **已合入** #1026：`internal/agentfamily` 内置 claude/codex/cursor/opencode/pi；`sift init`/`agent add` 按 executable 匹配 family，并把 `auth.env`/`config.env` 快照到 `~/.sift/agent-secrets/<id>.env`（0600，不进 `config.yaml`）。派工时 `launchworker` 合并快照；Claude 的 `~/.claude/settings.json` `env` 覆盖同名快照，CC Switch 下次派工生效。规格见 [`specs/agentfamily.md`](specs/agentfamily.md)。#1024 已关。
 - **未做**：Codex `config.toml` 尚未解析（init 冻过 `OPENAI_*` 时 CC Switch 切不动）；`model`/`thinking` 无向导 prompt。
 - **Brain 提供者（#1023 主路径）**：`brain.executable` 可为 pi/claude/codex；未写 `protocol`/`args` 时按 basename 推断。`sift init` 在 Brain 为空且能解析到 pi 时默认写入 pi。外层新增 `pi-json-v1`/`codex-json-v1`。Cursor 不是 Brain。仍不读 Codex `config.toml`。已存在的空 queued Run 不会在补上 Brain 后自动重做 T2。见 [ADR-016](decisions/016-brain-providers-pi-claude-codex.md)。
+
+## T2 失败不再假排队（2026-08-25，v0.6.14）
+
+Brain/T2 无法赋值时，未赋值 Run 转为 `failed`/`contract_violation`，不再静默停在 `queued`。默认 `sift ps` 不再显示这条。完整 T2 HITL（`waiting_human` + `design_approval`）仍未接线；同一 Issue 再跑需 `sift rm`。模型 ID 错位是 pi 配置问题，Sift 不写死供应商模型名。
 
 ## schema 66 启动（2026-08-25，v0.6.13）
 

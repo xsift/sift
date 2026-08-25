@@ -39,7 +39,7 @@ type SetInitialTaskSpecCmd struct {
 
 // CommitT2Assignment commits the production intake assignment and its launch
 // operation in one transaction. Callers invoke it only after a valid T2 result;
-// T2 fallback therefore leaves the queued Run untouched.
+// T2 fallback is fail-closed by the intake evaluator (unassigned queued → failed).
 type CommitT2AssignmentCmd struct {
 	RunID           string
 	ExpectedVersion int64

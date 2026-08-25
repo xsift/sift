@@ -8,6 +8,10 @@ summary: 版本间变更与修订沉淀
 
 版本间变更摘要与 PRD/DESIGN 正文中剥离的修订历史。只追加。
 
+## v0.6.14（2026-08-25）
+
+T2 无法赋值时不再把空 Run 静默留在 `queued`。转为 `failed`/`contract_violation`，默认 `sift ps` 不再显示「排队」。完整 `waiting_human` 人工分派仍未接线；同一 Issue 再跑需 `sift rm`。见 [`brain.md` §8.2](specs/brain.md)。
+
 ## v0.6.13（2026-08-25）
 
 正式嵌入 `0066_run_launch_sites`。本地补丁曾把 schema 升到 66，v0.6.12 只认到 65，daemon 拒启动。本版二进制支持 66，不接线 T2 HITL 写路径。
