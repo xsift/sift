@@ -22,6 +22,12 @@ type T1Evaluator struct {
 	Now   func() time.Time
 }
 
+// FailureT2AssignmentUnavailable is the closed runs.failure_reason used when
+// T1 already created a queued Run but T2 could not assign an agent. The CHECK
+// list has no T2-specific token, so this reuses contract_violation. The Run
+// must not stay silently queued; full waiting_human HITL is not wired yet.
+const FailureT2AssignmentUnavailable = "contract_violation"
+
 // EvaluateIssue wires a normalized Forge Issue into T1. Provider disabled or
 // unavailable is intentionally not a drop: the shell's deterministic fallback
 // is persisted as ready and the Issue is enqueued through PersistIntakeDecision.
@@ -77,26 +83,24 @@ func (e *T1Evaluator) EvaluateIssue(ctx context.Context, project Project, issue 
 		BaseContext:     brain.T2BaseContext{},
 	})
 	if err != nil {
-		// An unavailable/invalid T2 input is the human-assignment fallback. T1
-		// has already consumed the intake item and the Run remains queued with
-		// no assignment, so a later operator can resume it safely.
-		return nil
+		return e.failUnassigned(ctx, runID, now)
 	}
 	t2result, err := e.Brain.Call(ctx, brain.T2Contract(candidateIDs), brain.CallParams{
 		Scope: "run", SubjectKey: "run:" + runID, ProjectID: project.ID, RunID: runID, Input: t2Input,
 	})
 	if err != nil {
+		_ = e.failUnassigned(ctx, runID, now)
 		return err
 	}
 	if t2result.Status != storage.BrainCallValid || len(t2result.Output) == 0 {
-		return nil
+		return e.failUnassigned(ctx, runID, now)
 	}
 	var t2out brain.T2Output
 	if err := schema.Decode(t2result.Output, &t2out, schema.Closed); err != nil {
-		return nil
+		return e.failUnassigned(ctx, runID, now)
 	}
 	if t2out.Kind == nil || t2out.Agent == nil || t2out.HITLBeforeStart == nil || t2out.Goals == nil || t2out.Rationale == nil {
-		return nil
+		return e.failUnassigned(ctx, runID, now)
 	}
 	backend := project.AgentBackends[*t2out.Agent]
 	if backend == "" {
@@ -111,10 +115,12 @@ func (e *T1Evaluator) EvaluateIssue(ctx context.Context, project Project, issue 
 	if project.Repo != "" {
 		worktrees, err = worktree.NewManager(project.Repo, filepath.Join(project.Repo, ".sift-worktrees"))
 		if err != nil {
+			_ = e.failUnassigned(ctx, runID, now)
 			return err
 		}
 		created, err = worktrees.Create(ctx, runID, 1, "HEAD", "sift/"+runID)
 		if err != nil {
+			_ = e.failUnassigned(ctx, runID, now)
 			return err
 		}
 		canonical, digest, assembleErr := brain.AssembleTaskSpec(brain.TaskSpecParams{
@@ -125,6 +131,7 @@ func (e *T1Evaluator) EvaluateIssue(ctx context.Context, project Project, issue 
 		})
 		if assembleErr != nil {
 			_ = worktrees.Remove(ctx, created)
+			_ = e.failUnassigned(ctx, runID, now)
 			return assembleErr
 		}
 		assignment.TaskSpecID = storage.NewID()
@@ -138,7 +145,16 @@ func (e *T1Evaluator) EvaluateIssue(ctx context.Context, project Project, issue 
 		if worktrees != nil && created.Path != "" {
 			_ = worktrees.Remove(ctx, created)
 		}
+		_ = e.failUnassigned(ctx, runID, now)
 		return err
 	}
 	return nil
+}
+
+func (e *T1Evaluator) failUnassigned(ctx context.Context, runID string, now time.Time) error {
+	_, err := e.DB.TransitionRun(ctx, runID, 1, storage.DomainCommand{
+		To: storage.RunFailed, Source: storage.SourceSystem,
+		FailureReason: FailureT2AssignmentUnavailable, OccurredAtMS: now.UnixMilli(),
+	})
+	return err
 }
