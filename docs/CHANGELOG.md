@@ -8,6 +8,10 @@ summary: 版本间变更与修订沉淀
 
 版本间变更摘要与 PRD/DESIGN 正文中剥离的修订历史。只追加。
 
+## v0.6.12（2026-08-25）
+
+人手在 Forge 合并 Change 后，reverse-sync 将 Run 收成 `done + gate_bypassed`；默认 `sift ps` 不再列出。归档 Run 不参与 reverse-sync，单条瞬时 forge 错误不再饿死同项目其它候选。`GetChange` 审查探测失败保持 `ReviewUnknown`。`sift rm` 让出 issue 槽（0065）。规格见 [`ledger.md` §5](specs/ledger.md)、[`forge.md` §4.9](specs/forge.md)。
+
 ## DESIGN D0.10 标记通过（2026-07-28，版本不变）
 
 [review-18](reviews/2026-07-28-design-review-kimi-k3-06.md) 独立核销 review-16 全部九项发现，结论为**通过，可以进入 WBS**。`docs/DESIGN.md` 状态由 `draft` 改为 `active`，版本保持 D0.10。

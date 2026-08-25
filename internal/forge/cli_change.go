@@ -22,6 +22,7 @@ type rawChange struct {
 	DiffRefs struct {
 		HeadSHA string `json:"head_sha"`
 	} `json:"diff_refs"`
+	SHA            string     `json:"sha"`
 	MergedAt       *time.Time `json:"merged_at"`
 	MergeCommitSHA string     `json:"merge_commit_sha"`
 	Mergeable      *bool      `json:"mergeable"`
@@ -31,6 +32,14 @@ type rawChange struct {
 	Draft          bool       `json:"draft"`
 	Title          string     `json:"title"`
 	Body           string     `json:"body"`
+	Description    string     `json:"description"`
+}
+
+func changeBody(x rawChange, kind Kind) string {
+	if kind == KindGitLab && x.Description != "" {
+		return x.Description
+	}
+	return x.Body
 }
 
 func (a *Adapter) change(x rawChange) (Change, error) {
@@ -38,6 +47,9 @@ func (a *Adapter) change(x rawChange) (Change, error) {
 	state := ChangeOpen
 	if a.Kind == KindGitLab {
 		id, url, sha = strconv.Itoa(x.IID), x.WebURL, x.DiffRefs.HeadSHA
+		if sha == "" {
+			sha = x.SHA
+		}
 		switch x.State {
 		case "opened":
 		case "merged":
@@ -150,7 +162,11 @@ func (a *Adapter) getChange(ctx context.Context, p ProjectRef, id string, fetchR
 	if fetchReview {
 		if review, err := a.reviewState(ctx, p, c.ID); err == nil {
 			c.ReviewState = review
-		} else if !errors.Is(err, ErrAuthOrCapability) {
+		} else if errors.Is(err, ErrAuthOrCapability) || errors.Is(err, ErrTransient) || errors.Is(err, ErrRateLimited) {
+			// ReviewUnknown is the legal projection when the platform cannot
+			// determine review (forge.md §2). A 400 on GitLab /approvals must
+			// not hide an already-merged Change from reverse-sync.
+		} else {
 			return Change{}, err
 		}
 	}
@@ -173,6 +189,9 @@ func (a *Adapter) CreateChange(ctx context.Context, p ProjectRef, branch, base, 
 	id := x.Number
 	if a.Kind == KindGitLab {
 		sha, id = x.DiffRefs.HeadSHA, x.IID
+		if sha == "" {
+			sha = x.SHA
+		}
 	}
 	if id == 0 {
 		return Change{}, &ClassifiedError{Class: ErrContractViolation, Summary: "created change missing id"}
@@ -214,7 +233,7 @@ func (a *Adapter) FindChangeForCreateOperation(ctx context.Context, p ProjectRef
 			if e != nil {
 				return e
 			}
-			candidates = append(candidates, candidate{change: c, body: x.Body})
+			candidates = append(candidates, candidate{change: c, body: changeBody(x, a.Kind)})
 		}
 		return nil
 	})

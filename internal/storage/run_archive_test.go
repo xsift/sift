@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 )
@@ -87,7 +88,76 @@ func TestArchiveRunIdempotent(t *testing.T) {
 	}
 }
 
-// TestArchiveRunNotFound for a missing id.
+func TestArchiveRunFreesIssueSlotAndRequeuesIntake(t *testing.T) {
+	db, _ := openTestDB(t)
+	ctx := context.Background()
+	insertConfigSnapshot(t, db, "cfg-rm")
+	insertProject(t, db, "p-rm", "cfg-rm")
+	first, err := db.CreateForgeRun(ctx, CreateForgeRunCmd{
+		RunID: "run-old", ProjectID: "p-rm", ConfigSnapshotID: "cfg-rm",
+		ForgeKind: "github", ForgeHost: "github.com", ForgeProjectKey: "org/repo-p-rm",
+		IssueID: "7", IssueURL: "u", IssueAuthor: "alice",
+		TriggerLabelEventID: "7:sift", TriggerActor: "alice",
+		TriggerObservedAtMS: testNow, CreatedAtMS: testNow,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecForTest(ctx, `INSERT INTO intake_items
+		(id,project_id,forge_kind,normalized_host,forge_project_key,issue_id,issue_url,issue_digest,state,version,linked_run_id,created_at_ms,updated_at_ms)
+		VALUES ('intake-rm','p-rm','github','github.com','org/repo-p-rm','7','u','digest','consumed',1,'run-old',?,?)`, testNow, testNow); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ArchiveRun(ctx, first.ID, testNow+1); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	var linked sql.NullString
+	if err := db.QueryRowForTest(ctx, `SELECT state, linked_run_id FROM intake_items WHERE id='intake-rm'`).Scan(&state, &linked); err != nil {
+		t.Fatal(err)
+	}
+	if state != "pending_evaluation" || linked.Valid {
+		t.Fatalf("archived intake state=%q linked=%v, want pending_evaluation with empty run", state, linked)
+	}
+	second, err := db.CreateForgeRun(ctx, CreateForgeRunCmd{
+		RunID: "run-new", ProjectID: "p-rm", ConfigSnapshotID: "cfg-rm",
+		ForgeKind: "github", ForgeHost: "github.com", ForgeProjectKey: "org/repo-p-rm",
+		IssueID: "7", IssueURL: "u", IssueAuthor: "alice",
+		TriggerLabelEventID: "7:sift-2", TriggerActor: "alice",
+		TriggerObservedAtMS: testNow + 2, CreatedAtMS: testNow + 2,
+	})
+	if err != nil {
+		t.Fatalf("CreateForgeRun after archive: %v", err)
+	}
+	if second.ID != "run-new" {
+		t.Fatalf("CreateForgeRun after archive returned %q, want new run-new", second.ID)
+	}
+}
+
+func TestReverseSyncCandidatesOmitArchived(t *testing.T) {
+	db, _ := openTestDB(t)
+	ctx := context.Background()
+	if err := db.SeedProjectForTest(ctx, "cfg-rs", "proj-rs", testNow); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SeedReverseSyncRunForTest(ctx, "run-live", "proj-rs", "cfg-rs", "1", "3", "running", testNow); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SeedReverseSyncRunForTest(ctx, "run-dead", "proj-rs", "cfg-rs", "1#archived-dead", "", "waiting_human", testNow+1); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ArchiveRun(ctx, "run-dead", testNow+2); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.ReverseSyncCandidates(ctx, "proj-rs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].RunID != "run-live" {
+		t.Fatalf("candidates=%+v, want only run-live", got)
+	}
+}
+
 func TestArchiveRunNotFound(t *testing.T) {
 	db, _ := openTestDB(t)
 	if err := db.ArchiveRun(context.Background(), "ghost", testNow); !errors.Is(err, ErrRunNotFound) {

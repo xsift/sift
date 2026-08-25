@@ -527,9 +527,44 @@ func initPolicyRepo(t *testing.T) string {
 	return repo
 }
 
+func TestReconcilerSkipsMergedChangeWithoutPaths(t *testing.T) {
+	ctx := context.Background()
+	now := time.UnixMilli(1_700_000_000_000)
+	db, err := storage.Open(ctx, storage.OpenConfig{Path: filepath.Join(t.TempDir(), "sift.db"), BinaryVersion: "test", Now: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.SeedProjectForTest(ctx, "cfg", "p", now.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SeedGateCandidateForTest(ctx, "r", "p", "cfg", "42", now.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	client := phaseForge{merged: true}
+	r := &gate.Reconciler{
+		DB: db, Forge: &client, Brain: brain.NewShell(db, config.Brain{Executable: "fake", DailyTokenLimit: 100, MaxInputBytes: 1 << 20, MaxRawOutputBytes: 1 << 20}, &brain.FakeProvider{}, func() time.Time { return now }),
+		ProjectID: "p", Project: forge.ProjectRef{Kind: forge.KindGitHub, Host: "github.com", ProjectKey: "org/repo-p"},
+		Repo: t.TempDir(), Defaults: config.GateDefaults{ReviewPolicy: config.ReviewPolicyNever, RiskyReviewThreshold: 100, AutoMerge: true, ChecksPendingTimeout: time.Hour, FlakyRetryLimit: 1},
+		Attention: config.Attention{DayTimezone: "UTC", DailyQuota: config.DailyQuota{Low: 3, Normal: 3, High: 3}, MaxEscalations: 1},
+		Now:       func() time.Time { return now },
+	}
+	if err := r.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("merged Change with empty diff: %v", err)
+	}
+	run, err := db.Run(ctx, "r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status == storage.RunDone || run.Status == storage.RunFailed {
+		t.Fatalf("status=%s, Gate must leave merged close-out to reverse-sync", run.Status)
+	}
+}
+
 type phaseForge struct {
 	path, checks string
 	drift        bool
+	merged       bool
 	calls        int
 }
 
@@ -563,9 +598,16 @@ func (f *phaseForge) GetChange(context.Context, forge.ProjectRef, string) (forge
 	if f.drift && f.calls == 2 {
 		sha = strings.Repeat("b", 40)
 	}
-	return forge.Change{ID: "42", URL: "https://forge.example/42", HeadSHA: sha, State: forge.ChangeOpen, Mergeability: forge.Mergeable, ReviewState: forge.Approved}, nil
+	state := forge.ChangeOpen
+	if f.merged {
+		state = forge.ChangeMerged
+	}
+	return forge.Change{ID: "42", URL: "https://forge.example/42", HeadSHA: sha, State: state, Mergeability: forge.Mergeable, ReviewState: forge.Approved}, nil
 }
 func (f *phaseForge) GetChangeDiff(context.Context, forge.ProjectRef, string) (string, error) {
+	if f.merged {
+		return "", nil
+	}
 	return "diff --git a/" + f.path + " b/" + f.path + "\n+++ b/" + f.path, nil
 }
 func (f *phaseForge) ListChangeComments(context.Context, forge.ProjectRef, string, forge.Cursor) ([]forge.Comment, forge.Cursor, error) {

@@ -32,6 +32,7 @@ sift doctor --offline
 | service 安装后未启动 | 用户级 supervisor、日志、配置权限 | 按平台章节检查；无 supervisor 改用前台模式 |
 | 升级后仍显示旧版本 | `command -v sift`、`current`、service restart | 修正 PATH/安装渠道并重启用户级单元 |
 | 旧版本升级后拒绝数据库 | “schema newer”/migration 错误 | 不要删库；恢复能读取该 schema 的新 binary |
+| 已合并 MR，`sift ps` 仍显示运行中 | daemon 日志 `reconciler` / `glab: HTTP 400`、`sift ps -a` | 升级到含 reverse-sync 收口的版本并 `sift service restart`；确认 `sift ps -a` 已是「完成」。同一 Issue 再跑需 `sift rm <run-id>` |
 
 ## 1. 下载或安装失败
 

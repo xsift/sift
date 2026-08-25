@@ -70,6 +70,22 @@ func TestGitLabCreateChangeRereadsMissingHeadSHA(t *testing.T) {
 	}
 }
 
+func TestGitLabCommentTargetSendsJSONContentType(t *testing.T) {
+	var got []string
+	a := NewGitLab("glab", func(_ context.Context, _ string, args []string, _ []byte) ([]byte, []byte, error) {
+		got = append([]string(nil), args...)
+		return []byte(`{"id":42}`), nil, nil
+	})
+	id, err := a.CommentTarget(context.Background(), ProjectRef{Kind: KindGitLab, Host: "gitlab.example", ProjectKey: "o/r"}, TargetRef{Kind: TargetIssue, ID: "1"}, "hello")
+	if err != nil || id != "42" {
+		t.Fatalf("comment id=%q err=%v", id, err)
+	}
+	joined := strings.Join(got, " ")
+	if !strings.Contains(joined, "Content-Type: application/json") {
+		t.Fatalf("gitlab POST must send JSON content type, args=%q", joined)
+	}
+}
+
 func TestGitLabChangeCommentsUseMergeRequestNotes(t *testing.T) {
 	a := NewGitLab("glab", func(_ context.Context, _ string, args []string, _ []byte) ([]byte, []byte, error) {
 		if !strings.Contains(args[1], "/merge_requests/7/notes") {
@@ -83,6 +99,30 @@ func TestGitLabChangeCommentsUseMergeRequestNotes(t *testing.T) {
 	}
 }
 
+func TestGitLabGetChangeSurvivesApprovalsHTTP400(t *testing.T) {
+	// GitLab CE/some hosts 400 the approvals endpoint. That must not hide a
+	// merged Change: reverse-sync needs state/head, and ReviewUnknown is legal.
+	calls := 0
+	a := NewGitLab("glab", func(_ context.Context, _ string, args []string, _ []byte) ([]byte, []byte, error) {
+		calls++
+		path := args[1]
+		if strings.Contains(path, "/approvals") {
+			return nil, []byte("glab: HTTP 400"), errors.New("exit status 1")
+		}
+		return []byte(`{"iid":3,"web_url":"https://gitlab/x/3","state":"merged","merged_at":"2026-01-01T00:00:00Z","diff_refs":{"head_sha":"abc"},"merge_commit_sha":"def","title":"t"}`), nil, nil
+	})
+	c, err := a.GetChange(context.Background(), ProjectRef{Kind: KindGitLab, Host: "gitlab.example", ProjectKey: "o/r"}, "3")
+	if err != nil {
+		t.Fatalf("GetChange err=%v, want merged change when approvals 400s", err)
+	}
+	if c.State != ChangeMerged || c.ID != "3" || c.HeadSHA != "abc" || c.ReviewState != ReviewUnknown {
+		t.Fatalf("change=%+v, want merged/unknown review", c)
+	}
+	if calls != 2 {
+		t.Fatalf("calls=%d, want MR GET + approvals GET", calls)
+	}
+}
+
 func TestGitLabNormalization(t *testing.T) {
 	a := NewGitLab("glab", func(context.Context, string, []string, []byte) ([]byte, []byte, error) {
 		return []byte(`{"iid":7,"web_url":"https://gitlab/x/7","state":"opened","diff_refs":{"head_sha":"abc"},"title":"Draft: test","detailed_merge_status":"conflict"}`), nil, nil
@@ -90,6 +130,24 @@ func TestGitLabNormalization(t *testing.T) {
 	c, err := a.GetChange(context.Background(), ProjectRef{Kind: KindGitLab, Host: "gitlab.example", ProjectKey: "o/r"}, "7")
 	if err != nil || c.ID != "7" || !c.IsDraft || c.Mergeability != Conflicting {
 		t.Fatalf("change=%+v err=%v", c, err)
+	}
+}
+
+func TestGitLabFindChangeAcceptsListPayload(t *testing.T) {
+	// GitLab list MRs omit diff_refs and use description, not body. That is
+	// the payload create_change actually searches after a human merge.
+	const head = "4053d4f4b5fa724dbf4410cb36e510a9f5a684aa"
+	marker := OperationMarker("run:1", fixtureMarkerDigest)
+	row := `{"iid":3,"web_url":"https://gitlab/x/3","state":"merged","merged_at":"2026-01-01T00:00:00Z","sha":"` + head + `","description":` + strconv.Quote(marker) + `}`
+	a := NewGitLab("glab", func(_ context.Context, _ string, _ []string, _ []byte) ([]byte, []byte, error) {
+		return []byte("[" + row + "]"), nil, nil
+	})
+	change, got, err := a.FindChangeForCreateOperation(context.Background(), ProjectRef{Kind: KindGitLab, Host: "gitlab.example", ProjectKey: "o/r"}, "run:1", fixtureMarkerDigest, "sift/run", "main")
+	if err != nil || got != MarkerHit {
+		t.Fatalf("result=%q change=%+v err=%v", got, change, err)
+	}
+	if change == nil || change.ID != "3" || change.HeadSHA != head || change.State != ChangeMerged {
+		t.Fatalf("merged list hit = %+v", change)
 	}
 }
 

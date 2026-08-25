@@ -262,9 +262,10 @@ GetChange(ctx, project, changeID string) → (Change, error)
 
 **归一要点**：
 - GitHub：`gh api /repos/{org}/{repo}/pulls/{number}`。`id` → `number`、`state` → `"open"/"closed"`、`merged_at` 非 null → `ChangeMerged`、`head.sha` → `HeadSHA`。
-- GitLab：`glab api projects/{id}/merge_requests/{iid}`。`iid` → `ID`、`state` → `"opened"/"closed"/"merged"`、`merged_at` → `MergedAt`、`sha`（来自 `diff_refs.head_sha`）→ `HeadSHA`。
+- GitLab：`glab api projects/{id}/merge_requests/{iid}`。`iid` → `ID`、`state` → `"opened"/"closed"/"merged"`、`merged_at` → `MergedAt`、`HeadSHA` 取 `diff_refs.head_sha`，缺省时回退顶层 `sha`（列表 API 常无 `diff_refs`）。正文在 `description`，不在 `body`。
 - GitHub 将 `mergeable`/`mergeable_state` 归一为 `Mergeability`，Reviews 归一为 `ReviewState`，`draft` 归一为 `IsDraft`；GitLab 将 `merge_status`/`detailed_merge_status`、Approvals 能力与标题 `Draft:`/`WIP:` 前缀归一到相同字段。
 - GitHub `mergeable=null`、GitLab 状态仍在计算或平台/套餐无 Approvals 能力时返回对应 `unknown`。缺能力不是猜成通过；调用方据此转 HITL。
+- 审查探测失败（含 GitLab `/approvals` 的 Transient / RateLimited / AuthOrCapability）必须保持 `ReviewUnknown`，**不得**让整次 `GetChange` 失败；`merged`/`closed`/`head` 仍要交给 reverse-sync。
 
 ### 4.10 `GetChangeDiff`
 ```
