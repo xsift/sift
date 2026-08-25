@@ -233,6 +233,19 @@ Command 字段迁移必须把旧 `forge_event_receipts(project_id,forge_event_id
 
 索引：`(status, updated_at_ms)`、`(project_id, status)`、`change_id`。
 
+### 5.2.1 `run_launch_sites`
+
+预留给 T2 开工前 HITL 冻结执行现场。v0.6.13 起 schema 必须包含此表，否则已升到 version 66 的库会被官方二进制拒绝。本版本不写这张表。
+
+| 列 | 类型 | 约束/说明 |
+|----|------|-----------|
+| `run_id` | TEXT | PK，FK runs |
+| `worktree_path` | TEXT | NOT NULL，绝对路径 |
+| `branch_name` | TEXT | NOT NULL |
+| `base_ref` | TEXT | NOT NULL |
+| `base_sha` | TEXT | NOT NULL |
+| `created_at_ms` | INTEGER | NOT NULL |
+
 ### 5.3 `attempts`
 
 主键 `(run_id, attempt_no)`；`attempt_no` 从 1 单调递增且不得复用。

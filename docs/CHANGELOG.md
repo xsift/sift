@@ -8,6 +8,10 @@ summary: 版本间变更与修订沉淀
 
 版本间变更摘要与 PRD/DESIGN 正文中剥离的修订历史。只追加。
 
+## v0.6.13（2026-08-25）
+
+正式嵌入 `0066_run_launch_sites`。本地补丁曾把 schema 升到 66，v0.6.12 只认到 65，daemon 拒启动。本版二进制支持 66，不接线 T2 HITL 写路径。
+
 ## v0.6.12（2026-08-25）
 
 人手在 Forge 合并 Change 后，reverse-sync 将 Run 收成 `done + gate_bypassed`；默认 `sift ps` 不再列出。归档 Run 不参与 reverse-sync，单条瞬时 forge 错误不再饿死同项目其它候选。`GetChange` 审查探测失败保持 `ReviewUnknown`。`sift rm` 让出 issue 槽（0065）。规格见 [`ledger.md` §5](specs/ledger.md)、[`forge.md` §4.9](specs/forge.md)。

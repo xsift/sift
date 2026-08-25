@@ -158,6 +158,17 @@ func TestReverseSyncCandidatesOmitArchived(t *testing.T) {
 	}
 }
 
+func TestSchemaIncludesRunLaunchSites(t *testing.T) {
+	db, _ := openTestDB(t)
+	var n int
+	if err := db.QueryRowForTest(context.Background(), `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='run_launch_sites'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("run_launch_sites tables = %d, want 1 (0066 must be embedded so DBs already at 66 can open)", n)
+	}
+}
+
 func TestArchiveRunNotFound(t *testing.T) {
 	db, _ := openTestDB(t)
 	if err := db.ArchiveRun(context.Background(), "ghost", testNow); !errors.Is(err, ErrRunNotFound) {
