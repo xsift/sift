@@ -24,9 +24,12 @@ type T1Evaluator struct {
 
 // FailureT2AssignmentUnavailable is the closed runs.failure_reason used when
 // T1 already created a queued Run but T2 could not assign an agent. The CHECK
-// list has no T2-specific token, so this reuses contract_violation. The Run
-// must not stay silently queued; full waiting_human HITL is not wired yet.
+// list has no T2-specific token, so this reuses contract_violation.
 const FailureT2AssignmentUnavailable = "contract_violation"
+
+// T2RetryAfter is how long a failed unassigned Run waits before the daemon
+// retries T2. sift retry ignores this and tries immediately.
+const T2RetryAfter = time.Minute
 
 // EvaluateIssue wires a normalized Forge Issue into T1. Provider disabled or
 // unavailable is intentionally not a drop: the shell's deterministic fallback
@@ -43,13 +46,7 @@ func (e *T1Evaluator) EvaluateIssue(ctx context.Context, project Project, issue 
 	if err != nil {
 		return err
 	}
-	now := time.Time{}
-	if e.Now != nil {
-		now = e.Now()
-	}
-	if now.IsZero() {
-		now = time.UnixMilli(1)
-	}
+	now := e.now()
 	result, err := e.Brain.Call(ctx, brain.T1Contract(nil), brain.CallParams{Scope: "intake", SubjectKey: fmt.Sprintf("forge:%s:%s:%s:issue:%s", project.Ref.Kind, project.Ref.Host, project.Ref.ProjectKey, issue.ID), ProjectID: project.ID, Input: input})
 	if err != nil {
 		return err
@@ -71,7 +68,33 @@ func (e *T1Evaluator) EvaluateIssue(ctx context.Context, project Project, issue 
 	if out.Disposition != string(brain.T1Ready) {
 		return nil
 	}
+	return e.assignT2(ctx, project, issue, runID)
+}
 
+// RetryAssignment re-runs T2 on a failed unassigned Run. The issue slot stays
+// on this Run; the operator does not need to archive or re-label.
+func (e *T1Evaluator) RetryAssignment(ctx context.Context, project Project, issue forge.Issue, runID string) error {
+	run, err := e.DB.Run(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if run.Status != storage.RunFailed || run.AgentID != "" || run.FailureReason != FailureT2AssignmentUnavailable {
+		return nil
+	}
+	if _, err := e.DB.TransitionRun(ctx, runID, run.Version, storage.DomainCommand{
+		To: storage.RunQueued, Source: storage.SourceSystem, OccurredAtMS: e.now().UnixMilli(),
+	}); err != nil {
+		return err
+	}
+	return e.assignT2(ctx, project, issue, runID)
+}
+
+func (e *T1Evaluator) assignT2(ctx context.Context, project Project, issue forge.Issue, runID string) error {
+	now := e.now()
+	run, err := e.DB.Run(ctx, runID)
+	if err != nil {
+		return err
+	}
 	candidateIDs := make([]string, 0, len(project.T2Agents))
 	for _, candidate := range project.T2Agents {
 		candidateIDs = append(candidateIDs, candidate.ID)
@@ -107,7 +130,7 @@ func (e *T1Evaluator) EvaluateIssue(ctx context.Context, project Project, issue 
 		backend = "process"
 	}
 	assignment := storage.CommitT2AssignmentCmd{
-		RunID: runID, ExpectedVersion: 1, Kind: string(*t2out.Kind), AgentID: *t2out.Agent,
+		RunID: runID, ExpectedVersion: run.Version, Kind: string(*t2out.Kind), AgentID: *t2out.Agent,
 		HITLBeforeStart: *t2out.HITLBeforeStart, Backend: backend, NowMS: now.UnixMilli(),
 	}
 	var worktrees *worktree.Manager
@@ -152,9 +175,25 @@ func (e *T1Evaluator) EvaluateIssue(ctx context.Context, project Project, issue 
 }
 
 func (e *T1Evaluator) failUnassigned(ctx context.Context, runID string, now time.Time) error {
-	_, err := e.DB.TransitionRun(ctx, runID, 1, storage.DomainCommand{
+	run, err := e.DB.Run(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if run.Status != storage.RunQueued {
+		return nil
+	}
+	_, err = e.DB.TransitionRun(ctx, runID, run.Version, storage.DomainCommand{
 		To: storage.RunFailed, Source: storage.SourceSystem,
 		FailureReason: FailureT2AssignmentUnavailable, OccurredAtMS: now.UnixMilli(),
 	})
 	return err
+}
+
+func (e *T1Evaluator) now() time.Time {
+	if e.Now != nil {
+		if n := e.Now(); !n.IsZero() {
+			return n
+		}
+	}
+	return time.UnixMilli(1)
 }

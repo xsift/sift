@@ -8,6 +8,10 @@ summary: 版本间变更与修订沉淀
 
 版本间变更摘要与 PRD/DESIGN 正文中剥离的修订历史。只追加。
 
+## v0.6.15（2026-08-25）
+
+T2 赋不了值时，同一条 Run 会自动再试（约 1 分钟），`sift retry` 立即再试。默认 `sift ps` 列出这种未赋值失败。不必 `sift rm` 或重打触发标签。见 [`brain.md` §8.2](specs/brain.md)。
+
 ## v0.6.14（2026-08-25）
 
 T2 无法赋值时不再把空 Run 静默留在 `queued`。转为 `failed`/`contract_violation`，默认 `sift ps` 不再显示「排队」。完整 `waiting_human` 人工分派仍未接线；同一 Issue 再跑需 `sift rm`。见 [`brain.md` §8.2](specs/brain.md)。

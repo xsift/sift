@@ -628,7 +628,7 @@ func filterPsRuns(value any, selection string) map[string]any {
 	for _, r := range runs {
 		m, _ := r.(map[string]any)
 		s, _ := m["status"].(string)
-		if psRunVisible(s, selection) {
+		if psRunVisible(s, selection, m["attempt"] != nil) {
 			kept = append(kept, r)
 		}
 	}
@@ -649,12 +649,15 @@ func psRunIDList(obj map[string]any) []string {
 }
 
 // psRunVisible reports whether a run of the given status should be shown under
-// the selection: "" (default) = non-terminal only; "all" = everything; any other
-// value = exact status match.
-func psRunVisible(status, selection string) bool {
+// the selection: "" (default) = non-terminal plus unassigned T2 failures;
+// "all" = everything; any other value = exact status match.
+func psRunVisible(status, selection string, hasAttempt bool) bool {
 	switch selection {
 	case "", "active":
-		return status == "queued" || status == "running" || status == "waiting_human"
+		if status == "queued" || status == "running" || status == "waiting_human" {
+			return true
+		}
+		return status == "failed" && !hasAttempt
 	case "all":
 		return true
 	default:

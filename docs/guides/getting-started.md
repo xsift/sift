@@ -264,7 +264,7 @@ sift worktree <run-id>
 **失败恢复**：
 
 - daemon 未连接：先恢复 service/foreground daemon；
-- Run failed：用 `sift logs <run-id>` 和 `sift timeline --run <run-id>` 找原因，修复环境后执行 `sift retry <run-id>`；
+- Run failed：用 `sift logs <run-id>` 和 `sift timeline --run <run-id>` 找原因，修复环境后执行 `sift retry <run-id>`。T2 还没赋上 Agent 时，修好 Brain 后等约一分钟会自动再试，也可以立刻 `sift retry`；
 - Agent 卡住或方向错误：执行 `sift kill <run-id>`，再检查隔离 worktree，不要直接合并其分支。
 
 ### 7.5 会话式探索：`sift pi`
