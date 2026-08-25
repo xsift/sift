@@ -37,8 +37,11 @@ func TestRerunCheckExactHeadDualPlatform(t *testing.T) {
 			if kind == KindGitLab {
 				want = "/jobs/77/retry"
 			}
-			if !strings.Contains(joined, want) || !strings.Contains(joined, "--method POST --input -") {
+			if !strings.Contains(joined, want) || !strings.Contains(joined, "--method POST") || !strings.Contains(joined, "--input -") {
 				t.Fatalf("mutation args=%q", joined)
+			}
+			if kind == KindGitLab && !strings.Contains(joined, "Content-Type: application/json") {
+				t.Fatalf("gitlab POST must send JSON content type, args=%q", joined)
 			}
 		})
 	}

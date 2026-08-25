@@ -64,7 +64,7 @@ func (d *DB) CreateForgeRun(ctx context.Context, cmd CreateForgeRunCmd) (Run, er
 
 	// Intake idempotency: a forge Run for this issue already exists.
 	var existing string
-	err = tx.QueryRowContext(ctx, `SELECT id FROM runs WHERE forge_kind=? AND forge_host=? AND forge_project_key=? AND issue_id=?`,
+	err = tx.QueryRowContext(ctx, `SELECT id FROM runs WHERE forge_kind=? AND forge_host=? AND forge_project_key=? AND issue_id=? AND archived_at_ms IS NULL`,
 		cmd.ForgeKind, cmd.ForgeHost, cmd.ForgeProjectKey, cmd.IssueID).Scan(&existing)
 	switch {
 	case err == nil:

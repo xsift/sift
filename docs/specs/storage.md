@@ -226,7 +226,7 @@ Command 字段迁移必须把旧 `forge_event_receipts(project_id,forge_event_id
 - forge source 必须具有 project/forge/issue 字段，且 discussion target 三列为空；manual source 仍绑定 project/forge，issue 字段为空，并必须有三列同非空的已验证 discussion target。V0 不创建无项目、无法产出 Change 的 Run。
 - manual Run 创建端口在同一创建事务前，以其 project 的 Forge `GetIssue` 或 `GetChange` 验证 discussion target 的 kind/id/url；验证的 URL 必须写入本行，不得从用户输入原样信任。该目标是预选讨论面，不改变 `issue_*` 来源字段或 `change_*` 产物字段的语义。
 - discussion target 三列只能同空或同非空；一经插入不可更新。manual Run 不存在这三列即拒绝创建，故后续 Interrupt 恢复/重试无需查询漂移的 forge 对象来猜测发布位置。
-- `(forge_kind, forge_host, forge_project_key, issue_id)` 在 `issue_id IS NOT NULL` 时唯一，构成 Intake 幂等键。
+- `(forge_kind, forge_host, forge_project_key, issue_id)` 在 `issue_id IS NOT NULL AND archived_at_ms IS NULL` 时唯一，构成 Intake 幂等键。`sift rm` 归档后让出该槽，并把已 `consumed` 的 intake 拨回 `pending_evaluation`。
 - `done` 必须有 `change_id`；`gate_bypassed` 不改变状态语义。
 - `current_task_spec_id` 以 `(runs.id, current_task_spec_id)` 组合外键保证属于本 Run。
 - `completed_at_ms` 仅在 `done/failed` 时非空；`failed → queued` retry 时清空。

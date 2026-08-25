@@ -231,11 +231,19 @@ func (a *Adapter) call(ctx context.Context, p ProjectRef, path, method string, i
 	}
 	args := []string{"api", path, "--hostname", p.Host}
 	if method != "GET" {
-		args = append(args, "--method", method, "--input", "-")
+		args = append(args, "--method", method)
+		if a.Kind == KindGitLab {
+			args = append(args, "-H", "Content-Type: application/json")
+		}
+		args = append(args, "--input", "-")
 	}
 	o, s, e := a.Run(ctx, a.CLI, args, in)
 	if e != nil {
-		return classify(string(s), e)
+		err := classify(string(s), e)
+		if ce, ok := err.(*ClassifiedError); ok {
+			ce.Summary = method + " " + path + ": " + ce.Summary
+		}
+		return err
 	}
 	if v != nil && len(bytes.TrimSpace(o)) == 0 {
 		return &ClassifiedError{Class: ErrContractViolation, Summary: "empty response"}

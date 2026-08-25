@@ -127,7 +127,7 @@ Forge 端口 `RerunCheck(ctx, project, checkRunID, expectedHeadSHA)` 必须在�
 
 ## 5. 调用、Shadow Gate 与 HITL 事务
 
-Gate reconciler 在事务外读取 Forge/Brain 事实、组装快照并运行纯函数；不得持有数据库事务执行这些 IO。随后通过 `RecordGateEvaluation` 原子持久化：输入 snapshot（按 hash 去重）、cache insert-or-return、一次 evaluation、含独立 `shadow_decision` 的 calibration、其唯一 `gate_sample` Ledger entry 和必要的领域后继动作。
+Gate reconciler 在事务外读取 Forge/Brain 事实、组装快照并运行纯函数；不得持有数据库事务执行这些 IO。随后通过 `RecordGateEvaluation` 原子持久化：输入 snapshot（按 hash 去重）、cache insert-or-return、一次 evaluation、含独立 `shadow_decision` 的 calibration、其唯一 `gate_sample` Ledger entry 和必要的领域后继动作。远端 Change 已 `merged`/`closed` 时不再组装 Gate 输入（缺 diff 路径不得让 intake tick 失败）；收口由 reverse-sync 写成 `done`/`failed`，见 [`ledger.md` §5](ledger.md)。
 
 若 verdict 需要 HITL，该写端口必须在**同一事务**内完成 Gate snapshot/cache/evaluation/calibration/gate_sample，并调用 M3 `EmitInterrupt` 的五件事；创建的 Interrupt 还必须不可变绑定该 calibration。Run 转合法 `waiting_human`、generation-key 去重和首次注意力记账、Interrupt、事件、发布 operation 任一步失败均整体回滚。严禁等人回复后再补 Shadow Gate，或先使 Run 等待再补 Interrupt。`shadow_decision` 的完整 verdict 映射、人的因果 binding 和认证结算以已更新的 [`ledger.md` §3–§4](ledger.md) 为准，Gate 不得另作映射。
 

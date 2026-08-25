@@ -91,63 +91,65 @@ func (r *Reconciler) reconcileProject(ctx context.Context, project Project, now 
 	if err != nil {
 		return err
 	}
+	var firstErr error
 	for _, candidate := range candidates {
-		// Object state is authoritative. Do not require an actor for these
-		// reads: the read itself is the evidence, not a user instruction.
-		issue, err := r.Forge.GetIssue(ctx, project.Ref, candidate.IssueID)
+		if err := r.reconcileCandidate(ctx, project, candidate, now); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (r *Reconciler) reconcileCandidate(ctx context.Context, project Project, candidate storage.ReverseSyncCandidate, now time.Time) error {
+	// Object state is authoritative. Do not require an actor for these
+	// reads: the read itself is the evidence, not a user instruction.
+	// Change facts come first: a merged/closed MR must close the Run even
+	// when GetIssue is a transient forge error.
+	if candidate.ChangeID != "" {
+		change, err := r.Forge.GetChange(ctx, project.Ref, candidate.ChangeID)
 		if err != nil {
 			return err
 		}
-		if issue.State == forge.IssueClosed {
-			if err := r.fail(ctx, candidate, "closed_upstream", now); err != nil {
-				return err
-			}
-			continue
-		}
-
-		if candidate.ChangeID != "" {
-			change, err := r.Forge.GetChange(ctx, project.Ref, candidate.ChangeID)
+		switch change.State {
+		case forge.ChangeMerged:
+			siftMerge, err := r.DB.IsSiftMerge(ctx, candidate.RunID, change.ID, change.HeadSHA)
 			if err != nil {
 				return err
 			}
-			switch change.State {
-			case forge.ChangeMerged:
-				siftMerge, err := r.DB.IsSiftMerge(ctx, candidate.RunID, change.ID, change.HeadSHA)
-				if err != nil {
+			if !siftMerge {
+				if err := r.recordExternalMerge(ctx, candidate, change, now); err != nil {
 					return err
 				}
-				if !siftMerge {
-					if err := r.recordExternalMerge(ctx, candidate, change, now); err != nil {
-						return err
-					}
-				}
-				if _, err := r.DB.TransitionRun(ctx, candidate.RunID, candidate.Version, storage.DomainCommand{
-					To: storage.RunDone, Source: storage.SourceForge, ChangeID: change.ID,
-					ChangeURL: change.URL, ChangeHeadSHA: change.HeadSHA, GateBypassed: !siftMerge,
-					OccurredAtMS: now.UnixMilli(),
-				}); err != nil && !errors.Is(err, storage.ErrRejectedStale) {
-					return err
-				}
-				continue
-			case forge.ChangeClosed:
-				if err := r.fail(ctx, candidate, "change_closed", now); err != nil {
-					return err
-				}
-				continue
 			}
-		}
-
-		// A label removal is the only reverse-sync input treated as a command.
-		// The latest event wins; an untrusted removal is observed but ignored.
-		events, _, err := r.Forge.ListLabelEvents(ctx, project.Ref, forge.TargetRef{Kind: forge.TargetIssue, ID: candidate.IssueID}, "")
-		if err != nil {
-			return err
-		}
-		if event, ok := latestTriggerEvent(events, candidate.IssueID, project.TriggerLabel); ok && event.Action == forge.LabelRemoved && isAllowedActor(project.OperatorAllowlist, event.Actor) {
-			if err := r.fail(ctx, candidate, "untriggered", now); err != nil {
+			if _, err := r.DB.TransitionRun(ctx, candidate.RunID, candidate.Version, storage.DomainCommand{
+				To: storage.RunDone, Source: storage.SourceForge, ChangeID: change.ID,
+				ChangeURL: change.URL, ChangeHeadSHA: change.HeadSHA, GateBypassed: !siftMerge,
+				OccurredAtMS: now.UnixMilli(),
+			}); err != nil && !errors.Is(err, storage.ErrRejectedStale) {
 				return err
 			}
+			return nil
+		case forge.ChangeClosed:
+			return r.fail(ctx, candidate, "change_closed", now)
 		}
+	}
+
+	issue, err := r.Forge.GetIssue(ctx, project.Ref, candidate.IssueID)
+	if err != nil {
+		return err
+	}
+	if issue.State == forge.IssueClosed {
+		return r.fail(ctx, candidate, "closed_upstream", now)
+	}
+
+	// A label removal is the only reverse-sync input treated as a command.
+	// The latest event wins; an untrusted removal is observed but ignored.
+	events, _, err := r.Forge.ListLabelEvents(ctx, project.Ref, forge.TargetRef{Kind: forge.TargetIssue, ID: candidate.IssueID}, "")
+	if err != nil {
+		return err
+	}
+	if event, ok := latestTriggerEvent(events, candidate.IssueID, project.TriggerLabel); ok && event.Action == forge.LabelRemoved && isAllowedActor(project.OperatorAllowlist, event.Actor) {
+		return r.fail(ctx, candidate, "untriggered", now)
 	}
 	return nil
 }

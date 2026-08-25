@@ -503,3 +503,104 @@ func TestReconcilerRateLimitedCoolsDown(t *testing.T) {
 		t.Fatal("after cooldown the failure surfaces again")
 	}
 }
+
+type issueReadFailClient struct {
+	forge.Client
+	err error
+}
+
+func (c issueReadFailClient) GetIssue(context.Context, forge.ProjectRef, string) (forge.Issue, error) {
+	return forge.Issue{}, c.err
+}
+
+func TestReconcilerMarksDoneWhenSiblingIssueReadFails(t *testing.T) {
+	// An older waiting_human sibling can 400 GetIssue (mangled archived issue
+	// id). That must not prevent a later Run whose Change is already merged
+	// from reaching done.
+	db, project := reconcilerDB(t, "merge-sibling-fail")
+	fc := forge.NewFake()
+	addIssue(fc, project.Ref, "1", forge.IssueOpen)
+	change := fc.AddChange(project.Ref, "c1", "head1")
+	change.URL = "https://example.test/c1"
+	if _, err := fc.InjectMerged(project.Ref, "c1", time.UnixMilli(reconcilerNow)); err != nil {
+		t.Fatal(err)
+	}
+	seedWaitingRun(t, db, project, "run-dead", "1#archived-dead", "")
+	if err := db.SeedForgeRunForTest(context.Background(), "run-merge", project.ID, "cfg-"+project.ID, "1", reconcilerNow+1); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RecordCreatedChange(context.Background(), "run-merge", "c1", reconcilerNow+1); err != nil {
+		t.Fatal(err)
+	}
+	seed, err := sql.Open("sqlite", db.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := seed.Exec(`UPDATE runs SET kind='feature',status='running',created_at_ms=? WHERE id='run-merge'`, reconcilerNow+1); err != nil {
+		seed.Close()
+		t.Fatal(err)
+	}
+	seed.Close()
+
+	client := issueReadFailIDs{Client: fc, fail: map[string]error{
+		"1#archived-dead": &forge.ClassifiedError{Class: forge.ErrTransient, Summary: "glab: HTTP 400"},
+	}}
+	r := &Reconciler{DB: db, Forge: client, Projects: []Project{project}, Certification: config.DefaultConfig().Certification, Now: func() time.Time { return time.UnixMilli(reconcilerNow) }}
+	if err := r.ReconcileOnce(context.Background()); err == nil {
+		t.Fatal("sibling GetIssue 400 must still surface")
+	}
+	run, err := db.Run(context.Background(), "run-merge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status != storage.RunDone || !run.GateBypassed || run.ChangeID != change.ID {
+		t.Fatalf("run after sibling GetIssue 400 = %+v, want done", run)
+	}
+}
+
+type issueReadFailIDs struct {
+	forge.Client
+	fail map[string]error
+}
+
+func (c issueReadFailIDs) GetIssue(ctx context.Context, p forge.ProjectRef, id string) (forge.Issue, error) {
+	if err := c.fail[id]; err != nil {
+		return forge.Issue{}, err
+	}
+	return c.Client.GetIssue(ctx, p, id)
+}
+
+func TestReconcilerMarksDoneWhenIssueReadFailsButChangeIsMerged(t *testing.T) {
+	db, project := reconcilerDB(t, "merge-issue-fail")
+	fc := forge.NewFake()
+	addIssue(fc, project.Ref, "1", forge.IssueOpen)
+	change := fc.AddChange(project.Ref, "c1", "head1")
+	change.URL = "https://example.test/c1"
+	if _, err := fc.InjectMerged(project.Ref, "c1", time.UnixMilli(reconcilerNow)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SeedForgeRunForTest(context.Background(), "run-merge", project.ID, "cfg-"+project.ID, "1", reconcilerNow); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RecordCreatedChange(context.Background(), "run-merge", "c1", reconcilerNow); err != nil {
+		t.Fatal(err)
+	}
+	seed, err := sql.Open("sqlite", db.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := seed.Exec(`UPDATE runs SET kind='feature',status='running' WHERE id='run-merge'`); err != nil {
+		seed.Close()
+		t.Fatal(err)
+	}
+	seed.Close()
+
+	reconcile(t, db, issueReadFailClient{Client: fc, err: &forge.ClassifiedError{Class: forge.ErrTransient, Summary: "glab: HTTP 400"}}, project)
+	run, err := db.Run(context.Background(), "run-merge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status != storage.RunDone || !run.GateBypassed || run.ChangeID != change.ID {
+		t.Fatalf("run after merged change = %+v, want done even when GetIssue 400s", run)
+	}
+}

@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-04
-last_updated: 2026-08-24
+last_updated: 2026-08-25
 summary: Sift 总体计划执行情况。工作包分解见 WBS.md。
 ---
 
@@ -20,7 +20,7 @@ summary: Sift 总体计划执行情况。工作包分解见 WBS.md。
 | M5 Attention/Command/Report/Brain/指标 | ✅ 完成 | PASS WITH NOTES | Interrupt 全功能、Command、Report、Channel、九项指标 |
 | M6 tmux + 完整故障矩阵 | ✅ 完成 | PASS WITH NOTES | tmux 第二后端、PTY、V2/V4 双后端全矩阵、阶段门归档 |
 | **M7 真实 Agent + PoC 取证** | 🔬 **PoC 已验证** | — | **Pi Brain+Agent 双 forge 端到端跑通** |
-| **M8 发布** | 🔄 **自动化核心完成** | — | §8.1–8.4 合入 main(#907–#910)；**Release 已迭代至 v0.6.9**（#1024 agent family、#1022 Darwin 进程身份）。A10 干净机 + live 跨版本升级 = 人工门禁，待 M7 通过后 |
+| **M8 发布** | 🔄 **自动化核心完成** | — | §8.1–8.4 合入 main(#907–#910)；**Release 已迭代至 v0.6.12**（手工合并收口）。A10 干净机 + live 跨版本升级 = 人工门禁，待 M7 通过后 |
 
 ## M7 PoC 验证成果(本轮)
 
@@ -116,6 +116,18 @@ summary: Sift 总体计划执行情况。工作包分解见 WBS.md。
 - **已合入** #1026：`internal/agentfamily` 内置 claude/codex/cursor/opencode/pi；`sift init`/`agent add` 按 executable 匹配 family，并把 `auth.env`/`config.env` 快照到 `~/.sift/agent-secrets/<id>.env`（0600，不进 `config.yaml`）。派工时 `launchworker` 合并快照；Claude 的 `~/.claude/settings.json` `env` 覆盖同名快照，CC Switch 下次派工生效。规格见 [`specs/agentfamily.md`](specs/agentfamily.md)。#1024 已关。
 - **未做**：Codex `config.toml` 尚未解析（init 冻过 `OPENAI_*` 时 CC Switch 切不动）；`model`/`thinking` 无向导 prompt。
 - **Brain 提供者（#1023 主路径）**：`brain.executable` 可为 pi/claude/codex；未写 `protocol`/`args` 时按 basename 推断。`sift init` 在 Brain 为空且能解析到 pi 时默认写入 pi。外层新增 `pi-json-v1`/`codex-json-v1`。Cursor 不是 Brain。仍不读 Codex `config.toml`。已存在的空 queued Run 不会在补上 Brain 后自动重做 T2。见 [ADR-016](decisions/016-brain-providers-pi-claude-codex.md)。
+
+## 手工合并收口（2026-08-25，v0.6.12）
+
+GitLab 上人手合并 MR 后，Run 必须在下一轮 reverse-sync 收敛为 `done + gate_bypassed`，默认 `sift ps` 不再占用列表。本轮钉住并修了真机卡住点：
+
+- 归档 Run 不再进入 reverse-sync；同一项目内某一 Issue 的瞬时 400 不得挡住其他 Run 的合并收口
+- `GetChange` 在 GitLab `/approvals` 或审查探测失败时保持 `ReviewUnknown`，不得丢掉已 `merged` 的 Change
+- GitLab Change 的 `HeadSHA` 可回退顶层 `sha`，正文读 `description`
+- Gate 对已 merged/closed 的 Change 不再因缺 changed-path 失败
+- `sift rm` 归档后让出 `(forge, host, project, issue)` 槽（migration 0065）
+
+同一 Issue 再开一轮仍需 `sift rm`。T2 HITL、commit/push 闭环、`sift logs` 接 pi session 仍在本地 WIP，未进本版。
 
 ## 遗留 / 延期
 

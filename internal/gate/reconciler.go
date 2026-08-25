@@ -66,6 +66,11 @@ func (r *Reconciler) reconcile(ctx context.Context, c storage.GateCandidate, now
 	if err != nil {
 		return err
 	}
+	if before.State == forge.ChangeMerged || before.State == forge.ChangeClosed {
+		// Reverse-sync owns terminal Changes. An already-merged MR must not
+		// fail the intake tick for missing diff paths.
+		return nil
+	}
 	diff, err := r.Forge.GetChangeDiff(ctx, r.Project, c.ChangeID)
 	if err != nil {
 		return err

@@ -345,7 +345,7 @@ sift rm <run-id>         # 终态后从默认列表归档，历史仍保留
 - `auto_merge` 默认关闭；
 - 未知 Checks、review、mergeability 或输入会 fail closed；
 - AI 的建议不能覆盖 policy、Gate 或可信 operator 决定；
-- Forge 是 Issue、Change、审批和合并状态的最终事实源。
+- Forge 是 Issue、Change、审批和合并状态的最终事实源。在网页上手工合并 PR/MR 后，下一轮同步会把 Run 收成 `done`（默认 `sift ps` 不再列出；`sift ps -a` 仍可见）。同一 Issue 要再开一轮时执行 `sift rm <run-id>` 让出槽位。
 
 完成首个小 Run 后，再逐步扩大任务范围、调整 `.sift/policy.yaml` 和预算；不要在未观察真实 Agent/Forge 行为前直接开启自动合并。
 
