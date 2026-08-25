@@ -18,6 +18,9 @@ import (
 	"github.com/xsift/sift/internal/storage"
 )
 
+// TestEmptyDBDaemonTickPersistsForgeIntakeAndT1 proves one Tick from an empty
+// DB still consumes the trigger and records T1. This fixture has no agents,
+// so T2 cannot assign; the Run must fail closed instead of sitting queued.
 func TestEmptyDBDaemonTickPersistsForgeIntakeAndT1(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
@@ -79,7 +82,7 @@ func TestEmptyDBDaemonTickPersistsForgeIntakeAndT1(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer checkDB.Close()
-	var receipts, items, calls, runs int
+	var receipts, items, calls, failed int
 	for _, q := range []struct {
 		name, query string
 		dest        *int
@@ -87,14 +90,14 @@ func TestEmptyDBDaemonTickPersistsForgeIntakeAndT1(t *testing.T) {
 		{"receipt", `SELECT COUNT(*) FROM forge_event_receipts WHERE project_id='project-1'`, &receipts},
 		{"intake", `SELECT COUNT(*) FROM intake_items WHERE project_id='project-1'`, &items},
 		{"t1", `SELECT COUNT(*) FROM brain_calls WHERE project_id='project-1' AND touchpoint='T1'`, &calls},
-		{"run", `SELECT COUNT(*) FROM runs WHERE project_id='project-1' AND status='queued'`, &runs},
+		{"run", `SELECT COUNT(*) FROM runs WHERE project_id='project-1' AND status='failed' AND failure_reason='contract_violation'`, &failed},
 	} {
 		if err := checkDB.QueryRow(q.query).Scan(q.dest); err != nil {
 			t.Fatalf("%s query: %v", q.name, err)
 		}
 	}
-	if receipts != 1 || items != 1 || calls != 1 || runs != 1 {
-		t.Fatalf("persisted counts: receipts=%d intake=%d t1=%d queued_runs=%d", receipts, items, calls, runs)
+	if receipts != 1 || items != 1 || calls != 1 || failed != 1 {
+		t.Fatalf("persisted counts: receipts=%d intake=%d t1=%d failed_runs=%d", receipts, items, calls, failed)
 	}
 }
 
