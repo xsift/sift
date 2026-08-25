@@ -23,7 +23,11 @@ func psServe(t *testing.T, home string, runs []any) {
 }
 
 func runRow(id, status string) map[string]any {
-	return map[string]any{"run_id": id, "project_id": "p", "status": status, "version": float64(1), "agent_id": "a", "attempt_no": float64(1), "phase": "running"}
+	row := map[string]any{"run_id": id, "project_id": "p", "status": status, "version": float64(1), "agent_id": "a", "attempt_no": float64(1), "phase": "running"}
+	if status != "queued" {
+		row["attempt"] = map[string]any{"attempt_no": float64(1), "generation": float64(1), "phase": "running"}
+	}
+	return row
 }
 
 // mixedRuns is one run per status, ordered so the filtered view is obvious.
@@ -79,6 +83,19 @@ func TestPsStatusExact(t *testing.T) {
 	}
 	if got := strings.TrimRight(out.String(), "\n"); got != "r-failed" {
 		t.Fatalf("ps --status failed ids = %q, want r-failed", out.String())
+	}
+}
+
+func TestPsDefaultShowsUnassignedT2Failure(t *testing.T) {
+	home := freshHome(t)
+	failed := map[string]any{"run_id": "r-t2", "project_id": "p", "status": "failed", "version": float64(2), "attempt": nil}
+	psServe(t, home, []any{runRow("r-running", "running"), failed, runRow("r-done", "done")})
+	var out bytes.Buffer
+	if code := run([]string{"sift", "ps", "--ids"}, &out, io.Discard); code != 0 {
+		t.Fatalf("ps exit = %d; output=%q", code, out.String())
+	}
+	if got := strings.TrimRight(out.String(), "\n"); got != "r-running\nr-t2" {
+		t.Fatalf("ps default ids = %q, want r-running\\nr-t2", out.String())
 	}
 }
 

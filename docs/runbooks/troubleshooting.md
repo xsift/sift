@@ -33,7 +33,7 @@ sift doctor --offline
 | 升级后仍显示旧版本 | `command -v sift`、`current`、service restart | 修正 PATH/安装渠道并重启用户级单元 |
 | 旧版本升级后拒绝数据库 | “schema newer”/migration 错误 | 不要删库；恢复能读取该 schema 的新 binary。本机曾被本地补丁升到 66 时，用 v0.6.13+，不要回退 v0.6.12 |
 | 已合并 MR，`sift ps` 仍显示运行中 | daemon 日志 `reconciler` / `glab: HTTP 400`、`sift ps -a` | 升级到含 reverse-sync 收口的版本并 `sift service restart`；确认 `sift ps -a` 已是「完成」。同一 Issue 再跑需 `sift rm <run-id>` |
-| `sift ps` 一直「排队」且无 Agent | Brain/T2 fallback、pi 模型 ID、`sift ps -a` | 先对齐 Brain 用的 CLI 模型名（Sift 不写死模型 ID）。未赋值 Run 应收成 `failed`/`contract_violation`；`sift rm` 后再打触发标签 |
+| `sift ps` 一直「排队」或未赋值失败 | Brain/T2 fallback、pi 模型 ID | 先对齐 Brain 用的 CLI 模型名。未赋值 Run 会显示为失败并自动再试 T2；修好环境后等一分钟或执行 `sift retry <run-id>`，不必重打标签 |
 
 ## 1. 下载或安装失败
 

@@ -363,7 +363,71 @@ func (d *Daemon) IntakeTick(ctx context.Context) error {
 			return fmt.Errorf("gate[%d]: %w", i, err)
 		}
 	}
+	if err := d.retryUnassignedAssignments(ctx, false); err != nil {
+		return fmt.Errorf("t2-retry: %w", err)
+	}
 	return nil
+}
+
+func (d *Daemon) now() time.Time {
+	if d.Now != nil {
+		if n := d.Now(); !n.IsZero() {
+			return n
+		}
+	}
+	return time.Now()
+}
+
+func (d *Daemon) projectSlot(projectID string) int {
+	for i, p := range d.Pollers {
+		if len(p.Projects) == 1 && p.Projects[0].ID == projectID {
+			return i
+		}
+	}
+	return -1
+}
+
+func (d *Daemon) retryUnassignedAssignments(ctx context.Context, immediate bool) error {
+	readyBefore := d.now().UnixMilli()
+	if !immediate {
+		readyBefore = d.now().Add(-intake.T2RetryAfter).UnixMilli()
+	}
+	rows, err := d.DB.UnassignedT2Failures(ctx, readyBefore)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := d.retryOneUnassigned(ctx, row); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *Daemon) retryOneUnassigned(ctx context.Context, row storage.UnassignedT2Failure) error {
+	i := d.projectSlot(row.ProjectID)
+	if i < 0 || i >= len(d.Evaluators) {
+		return nil
+	}
+	project := d.Pollers[i].Projects[0]
+	issue, err := d.Pollers[i].Forge.GetIssue(ctx, project.Ref, row.IssueID)
+	if err != nil {
+		return nil
+	}
+	return d.Evaluators[i].RetryAssignment(ctx, project, issue, row.RunID)
+}
+
+// RetryUnassignedAssignment is the ops.retry path for a T2 assignment
+// failure. handled is false when the run is some other kind of retry.
+func (d *Daemon) RetryUnassignedAssignment(ctx context.Context, runID string, expectedVersion int64) (bool, error) {
+	row, ok, err := d.DB.UnassignedT2Failure(ctx, runID)
+	if err != nil || !ok {
+		return false, err
+	}
+	if row.Version != expectedVersion {
+		return true, storage.ErrRejectedStale
+	}
+	return true, d.retryOneUnassigned(ctx, row)
 }
 
 // OutboxTick advances committed external effects independently of Forge fact

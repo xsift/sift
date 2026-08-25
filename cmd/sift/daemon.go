@@ -150,6 +150,15 @@ func runDaemon(ctx context.Context, home config.Home) error {
 	}
 	defer s.Close()
 	s.SetOperatorAction(func(ctx context.Context, method, runID string, version int64) error {
+		if method == "ops.retry" {
+			handled, err := workers.RetryUnassignedAssignment(ctx, runID, version)
+			if err != nil {
+				return err
+			}
+			if handled {
+				return nil
+			}
+		}
 		return termination.Operator(ctx, runID, version, method == "ops.retry")
 	})
 	s.SetHookBootstrap(func(ctx context.Context, projectID string) error {
